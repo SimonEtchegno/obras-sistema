@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sistema de Obras</title>
+<link rel="stylesheet" href="/css/common.css">
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M6 21V10l6-5 6 5v11"/><path d="M10 21v-6h4v6"/></svg></span>Sistema de Obras</span>
+  </div>
+
+  <div class="container">
+    <div class="toolbar">
+      <div>
+        <h1>Proyectos</h1>
+        <p class="subtitle">Presupuestos, certificaciones y actualizaciones por obra.</p>
+      </div>
+      <button class="primary" id="btn-nuevo">+ Nuevo proyecto</button>
+    </div>
+
+    <div class="card" id="form-nuevo" style="display:none; margin-bottom:20px;">
+      <h2>Nuevo proyecto</h2>
+      <div class="field-row">
+        <div class="field">
+          <label>Nombre de la obra</label>
+          <input type="text" id="f-nombre" placeholder="Ej: ALEM">
+        </div>
+        <div class="field">
+          <label>Fecha del presupuesto original</label>
+          <input type="date" id="f-fecha">
+        </div>
+        <div class="field">
+          <label>Monto del presupuesto original ($)</label>
+          <input type="number" id="f-monto" placeholder="Ej: 53000000">
+        </div>
+      </div>
+      <div class="field">
+        <label>Descripción (opcional)</label>
+        <input type="text" id="f-descripcion" placeholder="Notas sobre la obra">
+      </div>
+      <div id="form-error"></div>
+      <button class="primary" id="btn-crear">Crear proyecto</button>
+      <button id="btn-cancelar">Cancelar</button>
+    </div>
+
+    <div class="card">
+      <div class="table-scroll">
+        <table class="responsive-cards">
+          <thead>
+            <tr>
+              <th>Obra</th>
+              <th>Presupuesto original</th>
+              <th class="num">Monto vigente</th>
+              <th class="num">Certificado</th>
+              <th class="num">Saldo pendiente</th>
+              <th style="width:160px">Avance</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-proyectos"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="vacio" style="display:none">Todavía no hay proyectos. Creá el primero arriba.</div>
+    </div>
+  </div>
+
+  <script src="/js/local-store.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/index.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "obras-sistema",
+  "version": "1.0.0",
+  "description": "Sistema de seguimiento de presupuestos y certificaciones de obra",
+  "private": true,
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node --no-warnings server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

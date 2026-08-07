@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Certificaciones — Sistema de Obras</title>
+<link rel="stylesheet" href="/css/common.css">
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M6 21V10l6-5 6 5v11"/><path d="M10 21v-6h4v6"/></svg></span>Sistema de Obras</span>
+    <span class="crumbs"><a href="/index.html">Proyectos</a> / <a id="crumb-proyecto" href="#">…</a> / Certificaciones</span>
+  </div>
+  <div class="tabs">
+    <a id="tab-resumen">Resumen</a>
+    <a class="active">Certificaciones</a>
+    <a id="tab-uocra">Actualizaciones UOCRA</a>
+  </div>
+
+  <div class="container">
+    <div class="toolbar">
+      <h1>Certificaciones</h1>
+      <button class="primary" id="btn-nueva">+ Nueva certificación</button>
+    </div>
+
+    <div class="card">
+      <div class="table-scroll">
+        <table class="responsive-cards">
+          <thead>
+            <tr>
+              <th style="width:70px">N°</th>
+              <th>Fecha</th>
+              <th>Descripción</th>
+              <th class="num">Total certificado</th>
+              <th style="width:90px"></th>
+            </tr>
+          </thead>
+          <tbody id="tabla"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="vacio" style="display:none">Todavía no hay certificaciones cargadas.</div>
+    </div>
+  </div>
+
+  <script src="/js/local-store.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/certificaciones.js"></script>
+</body>
+</html>
