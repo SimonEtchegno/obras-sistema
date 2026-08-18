@@ -6,18 +6,35 @@ Sistema para llevar el presupuesto, las certificaciones de avance y las actualiz
 
 Necesitás tener [Node.js](https://nodejs.org) instalado (versión 22.5 o más nueva; probado con la v24).
 
+Para trabajar en la interfaz, con recarga en vivo:
+
 ```
 npm install
+npm run dev
+```
+
+Después abrí `http://localhost:5173`.
+
+Para usarlo como en producción (un solo servidor, en `http://localhost:3000`):
+
+```
+npm run build
 npm start
 ```
 
-Después abrí `http://localhost:3000` en el navegador.
-
 Para parar el servidor: `Ctrl+C` en la terminal donde está corriendo.
+
+## Cómo está armado
+
+- **Front** (`web/`): aplicación React con Tailwind CSS, compilada por Vite a `dist/`. Es una sola página con ruteo del lado del navegador (`react-router`): lista de proyectos, detalle de proyecto, certificaciones y actualizaciones UOCRA.
+- **Backend** (`app.js`, `src/`): API Express con SQLite. Sirve además el build del front y, para cualquier ruta que no sea `/api`, devuelve el `index.html` de la SPA.
+- **Datos**: hoy el front guarda todo en el navegador (`localStorage`, ver `web/src/lib/localStore.js`), con las mismas reglas de negocio que el backend. Todas las pantallas hablan con `web/src/lib/api.js`, así que cuando se conecte la API real solo se reemplaza esa pieza.
 
 ## Dónde están los datos
 
-Todo se guarda en un solo archivo: `data\obras.db`. Para hacer una copia de seguridad, alcanza con copiar ese archivo a otro lado (con el servidor apagado, para evitar copiarlo a mitad de una escritura). Para "resetear" el sistema y arrancar de cero, se puede borrar ese archivo — se vuelve a crear vacío la próxima vez que arranca.
+Del lado del backend, todo se guarda en un solo archivo: `data\obras.db`. Para hacer una copia de seguridad, alcanza con copiar ese archivo a otro lado (con el servidor apagado, para evitar copiarlo a mitad de una escritura). Para "resetear" el sistema y arrancar de cero, se puede borrar ese archivo — se vuelve a crear vacío la próxima vez que arranca.
+
+Mientras el front siga usando `localStorage`, los datos que se ven en pantalla viven en el navegador de cada máquina: se borran desde las herramientas de desarrollo del navegador (borrar el sitio) y no se comparten entre computadoras.
 
 ## Cómo está pensado
 

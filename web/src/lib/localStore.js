@@ -2,7 +2,7 @@
 // al backend con base de datos: mismo comportamiento, mismas reglas de
 // negocio, pero sin servidor de por medio. Cuando se arme "el sistema
 // entero" con una base de datos real, esta es la pieza que se reemplaza —
-// el resto de las páginas no debería necesitar cambios porque hablan con
+// las páginas no deberían necesitar cambios porque hablan con
 // `api.get/post/put/patch/del`, no directamente con esto.
 const LocalDB = (function () {
   const CLAVE = 'obras-sistema-datos-v1';
@@ -572,3 +572,5 @@ const LocalDB = (function () {
 
   return { dispatch };
 })();
+
+export default LocalDB;

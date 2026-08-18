@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+/* Los tokens de diseño son los mismos que tenía css/common.css, pero ahora
+   declarados como escala de Tailwind: cada uno genera sus utilidades
+   (bg-surface, text-ink-soft, border-gridline, rounded-card, shadow-card…). */
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-plane: #f4f4f2;
+  --color-surface: #ffffff;
+  --color-surface-2: #f7f6f4;
+  --color-surface-3: #eeece8;
+
+  --color-ink: #16150f;
+  --color-ink-soft: #56544c;
+  --color-ink-muted: #8b8880;
+
+  --color-line: rgba(11, 11, 11, 0.09);
+  --color-line-strong: rgba(11, 11, 11, 0.14);
+  --color-gridline: #e6e4de;
+
+  --color-accent: #2a78d6;
+  --color-accent-ink: #ffffff;
+  --color-accent-track: #d7e7fa;
+  --color-accent-wash: rgba(42, 120, 214, 0.1);
+
+  --color-topbar: rgba(24, 79, 149, 0.72);
+  --color-glass: rgba(255, 255, 255, 0.58);
+  --color-glass-2: rgba(247, 246, 244, 0.6);
+  --color-glass-line: rgba(255, 255, 255, 0.55);
+
+  --color-good: #0ca30c;
+  --color-good-ink: #006300;
+  --color-warning: #fab219;
+  --color-warning-ink: #8a5a00;
+  --color-critical: #d03b3b;
+
+  --radius-card: 12px;
+  --radius-ctl: 8px;
+
+  --shadow-card: 0 1px 2px rgba(20, 19, 12, 0.04);
+  --shadow-card-md: 0 2px 6px rgba(20, 19, 12, 0.06), 0 1px 2px rgba(20, 19, 12, 0.05);
+}
+
+/* Tema oscuro: se redefinen los mismos tokens, así todas las utilidades ya
+   generadas cambian de color sin tocar una sola clase en los componentes.
+   Va fuera de @layer para ganarle siempre a los valores base de @theme. */
+:root {
+  color-scheme: light;
+  --glass-filter: blur(20px) saturate(160%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --glass-filter: blur(20px) saturate(140%);
+
+    --color-plane: #0b0b0a;
+    --color-surface: #171715;
+    --color-surface-2: #1f1f1c;
+    --color-surface-3: #272724;
+
+    --color-ink: #f6f5f2;
+    --color-ink-soft: #c3c2b7;
+    --color-ink-muted: #8b8880;
+
+    --color-line: rgba(255, 255, 255, 0.09);
+    --color-line-strong: rgba(255, 255, 255, 0.16);
+    --color-gridline: #2c2c2a;
+
+    --color-accent: #4a90e8;
+    --color-accent-track: rgba(74, 144, 232, 0.2);
+    --color-accent-wash: rgba(74, 144, 232, 0.14);
+
+    --color-topbar: rgba(18, 35, 63, 0.68);
+    --color-glass: rgba(30, 30, 28, 0.5);
+    --color-glass-2: rgba(38, 38, 35, 0.5);
+    --color-glass-line: rgba(255, 255, 255, 0.1);
+
+    --color-good-ink: #3ecf3e;
+    --color-critical: #e66767;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-card-md: 0 4px 14px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* El desenfoque de las superficies "glass" necesita el prefijo -webkit- para
+   Safari, así que vive acá en vez de repetirse en cada componente. */
+@utility glass-blur {
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+}
+
+@layer base {
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(900px circle at 12% -8%, rgba(42, 120, 214, 0.16), transparent 60%),
+      radial-gradient(700px circle at 92% 8%, rgba(42, 120, 214, 0.1), transparent 55%),
+      radial-gradient(800px circle at 50% 100%, rgba(42, 120, 214, 0.07), transparent 60%),
+      var(--color-plane);
+    background-attachment: fixed;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body {
+      background:
+        radial-gradient(900px circle at 12% -8%, rgba(74, 144, 232, 0.16), transparent 60%),
+        radial-gradient(700px circle at 92% 8%, rgba(74, 144, 232, 0.1), transparent 55%),
+        radial-gradient(800px circle at 50% 100%, rgba(74, 144, 232, 0.08), transparent 60%),
+        var(--color-plane);
+      background-attachment: fixed;
+    }
+  }
+}
