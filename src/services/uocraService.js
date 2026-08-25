@@ -1,25 +1,50 @@
 const db = require('../db');
 const { listarHojas } = require('./rollups');
 
-// Supuesto de negocio (documentado en el plan, ajustable si el cliente real
-// indica otro criterio): el % de aumento UOCRA se aplica sobre el saldo
-// pendiente (lo no certificado) de cada ítem afectado, no sobre lo ya
-// certificado. Solo aplica a ítems "hoja".
-function elegirItemsObjetivo(proyectoId, alcance, itemIds) {
-  const hojas = listarHojas(proyectoId);
-  if (alcance === 'seleccion') {
-    const set = new Set((itemIds || []).map(Number));
-    const objetivo = hojas.filter((h) => set.has(h.id));
-    if (objetivo.length === 0) throw new Error('No se seleccionó ningún ítem para la actualización.');
-    return objetivo;
+const TIPOS_VALIDOS = ['uocra', 'indice_construccion'];
+
+function validarTipo(tipo) {
+  if (!TIPOS_VALIDOS.includes(tipo)) {
+    throw new Error('El tipo de actualización debe ser "uocra" o "indice_construccion".');
   }
-  return hojas;
 }
 
-function previsualizar(proyectoId, { alcance, item_ids, porcentaje }) {
-  const objetivo = elegirItemsObjetivo(proyectoId, alcance, item_ids);
+// Supuesto de negocio (documentado en el plan, ajustable si el cliente real
+// indica otro criterio): el % de aumento (por convenio UOCRA o por índice de
+// la construcción) se aplica sobre el saldo pendiente (lo no certificado) de
+// cada ítem del proyecto, no sobre lo ya certificado. Solo aplica a ítems
+// "hoja", y siempre afecta a todo el proyecto: no se puede elegir un
+// subconjunto de ítems.
+function elegirItemsObjetivo(proyectoId) {
+  return listarHojas(proyectoId);
+}
+
+// El aumento se puede cargar de dos formas: como un % o como un monto total.
+// El monto se reparte entre los ítems a prorrata de su saldo pendiente, que es
+// lo mismo que aplicar el % que ese monto representa sobre el saldo total. Así
+// el resto del cálculo es uno solo, sin importar cómo se cargó.
+function porcentajeEfectivo(objetivo, { modo, porcentaje, monto }) {
+  if (modo === 'monto') {
+    const valor = Number(monto);
+    if (!Number.isFinite(valor)) throw new Error('El monto de aumento no es un número válido.');
+    const saldoTotal = objetivo.reduce((acc, item) => acc + item.saldo_pendiente, 0);
+    if (saldoTotal <= 0) {
+      throw new Error(
+        'El proyecto no tiene saldo pendiente, así que no hay dónde repartir un monto de aumento. Cargalo como porcentaje o certificá menos.'
+      );
+    }
+    return (valor / saldoTotal) * 100;
+  }
+  const valor = Number(porcentaje);
+  if (!Number.isFinite(valor)) throw new Error('El porcentaje de aumento no es un número válido.');
+  return valor;
+}
+
+function previsualizar(proyectoId, datos) {
+  const objetivo = elegirItemsObjetivo(proyectoId);
+  const pct = porcentajeEfectivo(objetivo, datos || {});
   return objetivo.map((item) => {
-    const ajuste = item.saldo_pendiente * (porcentaje / 100);
+    const ajuste = item.saldo_pendiente * (pct / 100);
     return {
       item_id: item.id,
       item_nombre: item.nombre,
@@ -31,16 +56,21 @@ function previsualizar(proyectoId, { alcance, item_ids, porcentaje }) {
 }
 
 function crearActualizacion(proyectoId, datos) {
-  const { fecha, porcentaje, alcance, item_ids, motivo } = datos;
-  const objetivo = elegirItemsObjetivo(proyectoId, alcance, item_ids);
+  const { fecha, tipo, motivo } = datos;
+  validarTipo(tipo);
+  const objetivo = elegirItemsObjetivo(proyectoId);
+  // Se guarda siempre el % (el ingresado, o el que equivale al monto cargado):
+  // es lo que necesita el cálculo, y el monto total queda igual registrado como
+  // la suma de los efectos.
+  const porcentaje = porcentajeEfectivo(objetivo, datos);
 
   db.exec('BEGIN');
   try {
     const fechaCreacion = new Date().toISOString();
     const resultado = db.prepare(`
-      INSERT INTO actualizacion_uocra (proyecto_id, fecha, porcentaje, alcance, motivo, fecha_creacion)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(proyectoId, fecha, porcentaje, alcance, motivo ?? null, fechaCreacion);
+      INSERT INTO actualizacion_uocra (proyecto_id, fecha, tipo, porcentaje, alcance, motivo, fecha_creacion)
+      VALUES (?, ?, ?, ?, 'todos', ?, ?)
+    `).run(proyectoId, fecha, tipo, porcentaje, motivo ?? null, fechaCreacion);
     const actualizacionId = resultado.lastInsertRowid;
 
     const efectos = [];

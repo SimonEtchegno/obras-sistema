@@ -6,8 +6,8 @@ import useTitulo from '../hooks/useTitulo.js';
 import { Container, Crumb, H1, Section, SectionTitle, Subtitle, Toolbar, TopBar } from '../components/Layout.jsx';
 import ProyectoTabs from '../components/ProyectoTabs.jsx';
 import PieComposicion from '../components/PieComposicion.jsx';
-import ComparacionPresupuesto from '../components/ComparacionPresupuesto.jsx';
 import ArbolItems from '../components/ArbolItems.jsx';
+import Extras from '../components/Extras.jsx';
 import { IconoCheck, IconoDocumento, IconoReloj, IconoTendencia } from '../components/Icons.jsx';
 import { Button, Card, Empty, ErrorAlert, KpiRow, KpiTile, Meter } from '../components/ui/index.js';
 
@@ -63,7 +63,7 @@ export default function ProyectoPage() {
             </Subtitle>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>+ Actualización UOCRA</Button>
+            <Button onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>+ Actualización</Button>
           </div>
         </Toolbar>
 
@@ -105,21 +105,19 @@ export default function ProyectoPage() {
 
         <Section>
           <Card>
-            <SectionTitle>Presupuesto: original vs. vigente</SectionTitle>
-            <ComparacionPresupuesto original={proyecto.monto_presupuesto_original} vigente={resumen.monto_vigente} />
-          </Card>
-        </Section>
-
-        <Section>
-          <Card>
             <SectionTitle>Ítems del presupuesto</SectionTitle>
             <Subtitle>
               Los ítems con subdivisiones son organizativos: su monto y avance son la suma de sus hijos. Solo se
-              certifica y se actualiza por UOCRA sobre ítems finales (sin subdivisiones).
+              certifica y se actualiza (por UOCRA o índice de la construcción) sobre ítems finales (sin
+              subdivisiones).
             </Subtitle>
 
             <ArbolItems raices={arbol} proyectoId={id} certificaciones={certificaciones} recargar={recargar} />
           </Card>
+        </Section>
+
+        <Section>
+          <Extras proyectoId={id} />
         </Section>
       </Container>
     </>

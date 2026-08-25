@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import cx from '../lib/cx.js';
 import { fmtMoney, fmtPct } from '../lib/format.js';
+import { hslStr, huesDeRaices, lightnessHijo } from '../lib/colores.js';
 import { Empty } from './ui/index.js';
 
 // Torta de composición del presupuesto: cada porción es un ítem raíz, con
@@ -14,16 +15,6 @@ const PIE_OUTER_R = 125;
 const PIE_OUTER_R_INNER = 65; // anillo de hover 50% más ancho (era 40 de espesor, ahora 60)
 const PIE_INNER_R = 61;
 const PIE_INNER_R_INNER = 32;
-
-function hslStr(h, s, l) {
-  return `hsl(${h.toFixed(1)}deg ${s}% ${l}%)`;
-}
-
-function pieHues(n) {
-  const start = 208; // mismo tono que --color-accent, para que la primera porción quede "de la casa"
-  const golden = 137.508;
-  return Array.from({ length: n }, (_, i) => (start + i * golden) % 360);
-}
 
 function polarPoint(r, angleDeg) {
   const a = ((angleDeg - 90) * Math.PI) / 180;
@@ -53,11 +44,6 @@ function donutSlicePath(rOuter, rInner, startAngle, endAngle) {
 
 function hijosConMontoDe(nodo) {
   return (nodo.hijos || []).filter((h) => h.monto_vigente > 0);
-}
-
-// Tonos de la misma gama del padre para los sub-ítems.
-function lightnessHijo(indice) {
-  return 38 + (indice % 4) * 11;
 }
 
 function Swatch({ color }) {
@@ -155,15 +141,20 @@ export function PieComposicion({ raices, resumen }) {
   const [activa, setActiva] = useState(null);
 
   const slices = useMemo(() => {
-    const nodos = raices.filter((n) => n.monto_vigente > 0);
-    const total = nodos.reduce((acc, n) => acc + n.monto_vigente, 0) || 1;
-    const hues = pieHues(nodos.length);
+    // El tono se toma del lugar que ocupa el ítem en el árbol completo, no
+    // entre los que entran al gráfico: así un ítem en cero no le corre el
+    // color a los demás, y su tarjeta en el árbol coincide con su porción.
+    const hues = huesDeRaices(raices.length);
+    const nodos = raices
+      .map((nodo, i) => ({ nodo, hue: hues[i] }))
+      .filter(({ nodo }) => nodo.monto_vigente > 0);
+    const total = nodos.reduce((acc, { nodo }) => acc + nodo.monto_vigente, 0) || 1;
     let acumulado = 0;
-    return nodos.map((nodo, i) => {
+    return nodos.map(({ nodo, hue }) => {
       const share = nodo.monto_vigente / total;
       const startAngle = acumulado * 360;
       acumulado += share;
-      return { nodo, hue: hues[i], startAngle, endAngle: acumulado * 360, share };
+      return { nodo, hue, startAngle, endAngle: acumulado * 360, share };
     });
   }, [raices]);
 

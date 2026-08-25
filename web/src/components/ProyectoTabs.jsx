@@ -30,7 +30,7 @@ export function ProyectoTabs({ proyectoId }) {
         Resumen
       </Tab>
       <Tab to={`/proyecto/${proyectoId}/certificaciones`}>Certificaciones</Tab>
-      <Tab to={`/proyecto/${proyectoId}/uocra`}>Actualizaciones UOCRA</Tab>
+      <Tab to={`/proyecto/${proyectoId}/uocra`}>Actualizaciones</Tab>
     </div>
   );
 }

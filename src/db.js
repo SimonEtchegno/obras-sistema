@@ -60,6 +60,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     proyecto_id INTEGER NOT NULL REFERENCES proyecto(id),
     fecha TEXT NOT NULL,
+    tipo TEXT NOT NULL DEFAULT 'uocra',
     porcentaje REAL NOT NULL,
     alcance TEXT NOT NULL,
     motivo TEXT,
@@ -75,6 +76,18 @@ db.exec(`
     monto_vigente_despues REAL NOT NULL
   );
 
+  -- Los extras se llevan aparte del árbol de ítems a propósito: son un
+  -- registro al costado del presupuesto, no una parte de él. Al no ser ítems
+  -- no entran en los rollups, ni se certifican, ni los tocan las
+  -- actualizaciones — no hay nada que excluir en esos cálculos.
+  CREATE TABLE IF NOT EXISTS extra (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proyecto_id INTEGER NOT NULL REFERENCES proyecto(id),
+    titulo TEXT NOT NULL,
+    monto REAL NOT NULL DEFAULT 0,
+    fecha_creacion TEXT NOT NULL
+  );
+
 `);
 
 // Columnas agregadas después del primer despliegue: en una base ya existente
@@ -82,6 +95,7 @@ db.exec(`
 for (const alter of [
   'ALTER TABLE item ADD COLUMN fijo INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE item ADD COLUMN permite_subitems INTEGER NOT NULL DEFAULT 0',
+  "ALTER TABLE actualizacion_uocra ADD COLUMN tipo TEXT NOT NULL DEFAULT 'uocra'",
 ]) {
   try {
     db.exec(alter);
@@ -97,6 +111,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_certdet_cert ON certificacion_detalle(certificacion_id);
   CREATE INDEX IF NOT EXISTS idx_uocraefecto_item ON actualizacion_uocra_efecto(item_id);
   CREATE INDEX IF NOT EXISTS idx_uocraefecto_actualizacion ON actualizacion_uocra_efecto(actualizacion_id);
+  CREATE INDEX IF NOT EXISTS idx_extra_proyecto ON extra(proyecto_id);
 `);
 
 module.exports = db;

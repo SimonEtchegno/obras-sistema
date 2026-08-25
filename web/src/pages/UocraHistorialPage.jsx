@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../lib/api.js';
-import { fmtFecha, fmtMoney, fmtPct } from '../lib/format.js';
+import { fmtFecha, fmtMoney, fmtPct, fmtTipoActualizacion } from '../lib/format.js';
 import useCargar from '../hooks/useCargar.js';
 import useTitulo from '../hooks/useTitulo.js';
 import { Container, Crumb, H1, Toolbar, TopBar } from '../components/Layout.jsx';
@@ -45,7 +45,7 @@ function FilaActualizacion({ actualizacion, recargar }) {
   }
 
   async function borrar() {
-    if (!confirm(`¿Borrar esta actualización UOCRA del ${fmtFecha(actualizacion.fecha)}? Esta acción no se puede deshacer.`)) {
+    if (!confirm(`¿Borrar esta actualización del ${fmtFecha(actualizacion.fecha)}? Esta acción no se puede deshacer.`)) {
       return;
     }
     const r = await api.del(`/actualizaciones-uocra/${actualizacion.id}`);
@@ -57,10 +57,8 @@ function FilaActualizacion({ actualizacion, recargar }) {
     <>
       <Tr>
         <Td label="Fecha">{fmtFecha(actualizacion.fecha)}</Td>
+        <Td label="Tipo">{fmtTipoActualizacion(actualizacion.tipo)}</Td>
         <Td label="Motivo">{actualizacion.motivo || ''}</Td>
-        <Td label="Alcance">
-          {actualizacion.alcance === 'todos' ? 'Todo el proyecto' : 'Selección de ítems'}
-        </Td>
         <Td label="%" num>
           {fmtPct(actualizacion.porcentaje)}
         </Td>
@@ -103,21 +101,21 @@ export default function UocraHistorialPage() {
 
   const proyecto = datos?.proyecto;
   const lista = datos?.lista ?? [];
-  useTitulo(proyecto ? `Actualizaciones UOCRA — ${proyecto.nombre}` : 'Actualizaciones UOCRA — Sistema de Obras');
+  useTitulo(proyecto ? `Actualizaciones — ${proyecto.nombre}` : 'Actualizaciones — Sistema de Obras');
 
   return (
     <>
       <TopBar>
         <Crumb to="/">Proyectos</Crumb> / <Crumb to={`/proyecto/${id}`}>{proyecto ? proyecto.nombre : '…'}</Crumb> /
-        Actualizaciones UOCRA
+        Actualizaciones
       </TopBar>
       <ProyectoTabs proyectoId={id} />
 
       <Container>
         <Toolbar>
-          <H1 className="mb-0">Actualizaciones UOCRA</H1>
+          <H1 className="mb-0">Actualizaciones</H1>
           <Button variante="primary" onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>
-            + Actualización UOCRA
+            + Actualización
           </Button>
         </Toolbar>
 
@@ -128,8 +126,8 @@ export default function UocraHistorialPage() {
             <THead>
               <tr>
                 <Th>Fecha</Th>
+                <Th>Tipo</Th>
                 <Th>Motivo</Th>
-                <Th>Alcance</Th>
                 <Th num>%</Th>
                 <Th num>Ajuste total</Th>
                 <Th className="w-[90px]" />
@@ -142,7 +140,7 @@ export default function UocraHistorialPage() {
             </TBody>
           </Table>
 
-          {!lista.length && <Empty>Todavía no hay actualizaciones UOCRA cargadas.</Empty>}
+          {!lista.length && <Empty>Todavía no hay actualizaciones cargadas.</Empty>}
         </Card>
       </Container>
     </>
