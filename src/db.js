@@ -32,7 +32,9 @@ db.exec(`
     porcentaje REAL NOT NULL DEFAULT 0,
     monto_base REAL NOT NULL DEFAULT 0,
     monto_base_manual INTEGER NOT NULL DEFAULT 0,
-    activo INTEGER NOT NULL DEFAULT 1
+    activo INTEGER NOT NULL DEFAULT 1,
+    fijo INTEGER NOT NULL DEFAULT 0,
+    permite_subitems INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS certificacion (
@@ -73,6 +75,22 @@ db.exec(`
     monto_vigente_despues REAL NOT NULL
   );
 
+`);
+
+// Columnas agregadas después del primer despliegue: en una base ya existente
+// CREATE TABLE IF NOT EXISTS no las suma, así que se agregan a mano.
+for (const alter of [
+  'ALTER TABLE item ADD COLUMN fijo INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE item ADD COLUMN permite_subitems INTEGER NOT NULL DEFAULT 0',
+]) {
+  try {
+    db.exec(alter);
+  } catch {
+    // la columna ya existe
+  }
+}
+
+db.exec(`
   CREATE INDEX IF NOT EXISTS idx_item_proyecto ON item(proyecto_id);
   CREATE INDEX IF NOT EXISTS idx_item_parent ON item(parent_id);
   CREATE INDEX IF NOT EXISTS idx_certdet_item ON certificacion_detalle(item_id);

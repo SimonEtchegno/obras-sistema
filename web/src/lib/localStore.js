@@ -5,7 +5,7 @@
 // las páginas no deberían necesitar cambios porque hablan con
 // `api.get/post/put/patch/del`, no directamente con esto.
 const LocalDB = (function () {
-  const CLAVE = 'obras-sistema-datos-v1';
+  const CLAVE = 'obras-sistema-datos-v2';
 
   function estructuraVacia() {
     return {
@@ -21,6 +21,34 @@ const LocalDB = (function () {
       },
     };
   }
+
+  // Estructura fija de ítems que arma todo proyecto nuevo. Los ítems marcados
+  // con permiteSubitems son los únicos donde el usuario puede agregar
+  // sub-ítems propios (a mano); el resto de la estructura no se puede tocar.
+  const ITEMS_FIJOS = [
+    {
+      nombre: 'Cañerías',
+      porcentaje: 44,
+      hijos: [
+        { nombre: 'Losas', porcentaje: 65, permiteSubitems: true },
+        { nombre: 'Paredes', porcentaje: 35, permiteSubitems: true },
+      ],
+    },
+    { nombre: 'Cableado y col. Llaves', porcentaje: 30, permiteSubitems: true },
+    {
+      nombre: 'Gabinetes y tableros',
+      porcentaje: 10,
+      hijos: [
+        { nombre: 'TG y TGM', porcentaje: 60, permiteSubitems: true },
+        { nombre: 'Resto de tableros', porcentaje: 40, permiteSubitems: true },
+      ],
+    },
+    { nombre: 'Montantes', porcentaje: 10, permiteSubitems: true },
+    { nombre: 'Baterías porteros', porcentaje: 2, permiteSubitems: true },
+    { nombre: 'Conex. Bombas', porcentaje: 1, permiteSubitems: true },
+    { nombre: 'Zanjeos Varios', porcentaje: 1, permiteSubitems: true },
+    { nombre: 'Tab. AA', porcentaje: 2, permiteSubitems: true },
+  ];
 
   let data;
   let esPrimeraVez = false;
@@ -96,6 +124,18 @@ const LocalDB = (function () {
     data.items
       .filter((i) => i.proyecto_id === Number(proyectoId) && i.parent_id == null && i.activo)
       .forEach((raiz) => recomputeSubtree(raiz.id));
+  }
+
+  // Los sub-ítems creados a mano no llevan % propio: siempre se reparten el
+  // 100% del padre en partes iguales entre todos los hermanos. Se recalcula
+  // cada vez que se agrega o se borra uno.
+  function repartirHermanosPorIgual(parentId) {
+    const hermanos = data.items
+      .filter((i) => i.parent_id === Number(parentId) && i.activo)
+      .sort((a, b) => (a.orden || 0) - (b.orden || 0) || a.id - b.id);
+    if (!hermanos.length) return;
+    const porcentajeIgual = 100 / hermanos.length;
+    hermanos.forEach((h) => { h.porcentaje = porcentajeIgual; });
   }
 
   function getAjustesUocraPorItem(proyectoId) {
@@ -176,6 +216,29 @@ const LocalDB = (function () {
     return hojas;
   }
 
+  function sembrarItemsFijos(proyectoId) {
+    function crear(nodo, parentId, orden) {
+      const item = {
+        id: nuevoId('items'),
+        proyecto_id: Number(proyectoId),
+        parent_id: parentId || null,
+        nombre: nodo.nombre,
+        orden,
+        porcentaje: nodo.porcentaje,
+        monto_base: 0,
+        monto_base_manual: 0,
+        activo: 1,
+        fijo: 1,
+        permite_subitems: nodo.permiteSubitems ? 1 : 0,
+      };
+      data.items.push(item);
+      (nodo.hijos || []).forEach((hijo, i) => crear(hijo, item.id, i));
+      return item.id;
+    }
+    ITEMS_FIJOS.forEach((raiz, i) => crear(raiz, null, i));
+    recomputeProyecto(proyectoId);
+  }
+
   function resumenProyecto(proyectoId) {
     const raices = getArbolConRollups(proyectoId);
     let monto_vigente = 0;
@@ -210,6 +273,7 @@ const LocalDB = (function () {
       fecha_creacion: ahora(),
     };
     data.proyectos.push(proyecto);
+    sembrarItemsFijos(proyecto.id);
     guardar();
     return proyecto;
   }
@@ -249,79 +313,96 @@ const LocalDB = (function () {
 
   function accionCrearItem(proyectoId, body) {
     requireProyecto(proyectoId);
-    const { nombre, parent_id, orden, porcentaje, monto_base, monto_base_manual } = body || {};
+    const { nombre, parent_id, orden } = body || {};
     if (!nombre) throw new Error('El ítem necesita un nombre.');
-    if (parent_id) {
-      const padre = getItem(parent_id);
-      if (!padre || padre.proyecto_id !== Number(proyectoId)) {
-        throw new Error('El ítem padre indicado no existe en este proyecto.');
-      }
+    if (!parent_id) {
+      throw new Error('Los ítems del presupuesto son fijos: solo se pueden agregar sub-ítems dentro de un ítem que lo permita.');
     }
-    const esManual = !!monto_base_manual;
+    const padre = getItem(parent_id);
+    if (!padre || padre.proyecto_id !== Number(proyectoId)) {
+      throw new Error('El ítem padre indicado no existe en este proyecto.');
+    }
+    if (!padre.permite_subitems) {
+      throw new Error('No se pueden agregar sub-ítems dentro de este ítem.');
+    }
     const item = {
       id: nuevoId('items'),
       proyecto_id: Number(proyectoId),
-      parent_id: parent_id ? Number(parent_id) : null,
+      parent_id: Number(parent_id),
       nombre,
       orden: orden || 0,
-      porcentaje: Number(porcentaje) || 0,
-      monto_base: esManual && monto_base != null ? Number(monto_base) : 0,
-      monto_base_manual: esManual ? 1 : 0,
+      // Sin % propio: se reparte en partes iguales entre hermanos, ver abajo.
+      porcentaje: 0,
+      monto_base: 0,
+      monto_base_manual: 0,
       activo: 1,
+      fijo: 0,
+      permite_subitems: 0,
     };
     data.items.push(item);
-    recomputeSubtree(item.id);
+    repartirHermanosPorIgual(item.parent_id);
+    recomputeSubtree(item.parent_id);
     guardar();
     return item;
   }
 
+  // Un sub-ítem solo tiene nombre editable: su % (y por lo tanto su monto)
+  // es siempre automático, y su avance se corrige editando las
+  // certificaciones, no el ítem.
   function accionEditarItem(id, cambios) {
     const item = requireItem(id);
+    if (item.fijo) throw new Error('Los ítems fijos del presupuesto no se pueden editar.');
     cambios = cambios || {};
     if (cambios.nombre !== undefined) item.nombre = cambios.nombre;
-    if (cambios.orden !== undefined) item.orden = cambios.orden;
-    if (cambios.porcentaje !== undefined) item.porcentaje = Number(cambios.porcentaje);
-    if (cambios.parent_id !== undefined) {
-      const nuevoPadre = cambios.parent_id;
-      if (nuevoPadre) {
-        let cursor = Number(nuevoPadre);
-        while (cursor) {
-          if (cursor === item.id) throw new Error('No se puede mover un ítem dentro de sí mismo.');
-          const padre = getItem(cursor);
-          cursor = padre ? padre.parent_id : null;
-        }
-      }
-      item.parent_id = nuevoPadre ? Number(nuevoPadre) : null;
-    }
-    if (cambios.monto_base !== undefined && cambios.monto_base !== null) {
-      item.monto_base = Number(cambios.monto_base);
-      item.monto_base_manual = 1;
-    }
-    if (cambios.monto_base_manual !== undefined) {
-      item.monto_base_manual = cambios.monto_base_manual ? 1 : 0;
-    }
-    recomputeSubtree(item.id);
     guardar();
     return item;
   }
 
-  function accionArchivarItem(id) {
-    const item = getItem(id);
-    if (item) { item.activo = 0; guardar(); }
+  function accionEliminarItem(id) {
+    const item = requireItem(id);
+    if (item.fijo) throw new Error('Los ítems fijos del presupuesto no se pueden eliminar.');
+    const idsABorrar = [item.id];
+    for (let i = 0; i < idsABorrar.length; i++) {
+      data.items.filter((it) => it.parent_id === idsABorrar[i]).forEach((hijo) => idsABorrar.push(hijo.id));
+    }
+    const setBorrar = new Set(idsABorrar);
+    data.certificacionDetalles = data.certificacionDetalles.filter((d) => !setBorrar.has(d.item_id));
+    data.actualizacionUocraEfectos = data.actualizacionUocraEfectos.filter((e) => !setBorrar.has(e.item_id));
+    data.items = data.items.filter((it) => !setBorrar.has(it.id));
+    if (item.parent_id) {
+      repartirHermanosPorIgual(item.parent_id);
+      recomputeSubtree(item.parent_id);
+    }
+    guardar();
     return { ok: true };
   }
 
   // ---------- acciones: certificaciones ----------
 
+  // Historial "plano" para la solapa Certificaciones: una fila por ítem
+  // certificado (no por certificación), con la fecha y el título de la
+  // certificación a la que pertenece.
   function accionListarCertificaciones(proyectoId) {
-    return data.certificaciones
-      .filter((c) => c.proyecto_id === Number(proyectoId))
-      .map((c) => Object.assign({}, c, {
-        total_certificado: data.certificacionDetalles
-          .filter((d) => d.certificacion_id === c.id)
-          .reduce((acc, d) => acc + d.monto_certificado, 0),
-      }))
-      .sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : b.id - a.id));
+    const idsCert = new Set(
+      data.certificaciones.filter((c) => c.proyecto_id === Number(proyectoId)).map((c) => c.id)
+    );
+    const certPorId = new Map(data.certificaciones.map((c) => [c.id, c]));
+    return data.certificacionDetalles
+      .filter((d) => idsCert.has(d.certificacion_id))
+      .map((d) => {
+        const cert = certPorId.get(d.certificacion_id);
+        const item = getItem(d.item_id);
+        return {
+          detalle_id: d.id,
+          certificacion_id: cert.id,
+          fecha: cert.fecha,
+          titulo: cert.descripcion,
+          item_id: d.item_id,
+          item_nombre: item ? item.nombre : '(ítem borrado)',
+          monto_certificado: d.monto_certificado,
+        };
+      })
+      .sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : b.certificacion_id - a.certificacion_id));
   }
 
   function accionCrearCertificacion(proyectoId, datos) {
@@ -376,24 +457,28 @@ const LocalDB = (function () {
     return { certificacionId: certificacion.id, avisos };
   }
 
-  function accionDetalleCertificacion(id) {
-    const cert = data.certificaciones.find((c) => c.id === Number(id));
-    if (!cert) throw new Error('Certificación no encontrada.');
-    const detalles = data.certificacionDetalles
-      .filter((d) => d.certificacion_id === cert.id)
-      .map((d) => Object.assign({}, d, { item_nombre: (getItem(d.item_id) || {}).nombre || '(ítem borrado)' }));
-    return Object.assign({}, cert, { detalles });
-  }
-
+  // Cada certificación tiene un solo detalle (se carga de a un ítem por vez
+  // desde su propia tarjeta), así que editar la certificación es editar ese
+  // único detalle.
   function accionEditarCertificacion(id, cambios) {
     const cert = data.certificaciones.find((c) => c.id === Number(id));
     if (!cert) throw new Error('Certificación no encontrada.');
     cambios = cambios || {};
-    cert.numero = cambios.numero ?? cert.numero;
     cert.fecha = cambios.fecha ?? cert.fecha;
-    cert.descripcion = cambios.descripcion ?? cert.descripcion;
+    cert.descripcion = cambios.titulo !== undefined ? cambios.titulo : cert.descripcion;
+
+    if (cambios.monto !== undefined && cambios.monto !== null) {
+      const detalle = data.certificacionDetalles.find((d) => d.certificacion_id === cert.id);
+      if (detalle) {
+        detalle.monto_certificado = Number(cambios.monto);
+        detalle.porcentaje_certificado = detalle.monto_vigente_snapshot > 0
+          ? (detalle.monto_certificado / detalle.monto_vigente_snapshot) * 100
+          : null;
+      }
+    }
+
     guardar();
-    return accionDetalleCertificacion(id);
+    return { ok: true };
   }
 
   function accionEliminarCertificacion(id) {
@@ -510,24 +595,12 @@ const LocalDB = (function () {
   // ---------- ejemplo inicial (solo la primera vez que se abre en un navegador) ----------
 
   function sembrarEjemplo() {
-    const proyecto = accionCrearProyecto({
+    accionCrearProyecto({
       nombre: 'ALEM',
       fecha_presupuesto_original: '2025-06-05',
       monto_presupuesto_original: 53000000,
       descripcion: 'Ejemplo cargado a partir de la hoja de presupuesto original.',
     });
-    const caner = accionCrearItem(proyecto.id, { nombre: 'Cañerías', porcentaje: 44 });
-    accionCrearItem(proyecto.id, { nombre: 'Losas', porcentaje: 65, parent_id: caner.id });
-    accionCrearItem(proyecto.id, { nombre: 'Paredes', porcentaje: 35, parent_id: caner.id });
-    accionCrearItem(proyecto.id, { nombre: 'Cableado y col. llaves', porcentaje: 30 });
-    const gabinetes = accionCrearItem(proyecto.id, { nombre: 'Gabinetes y tableros', porcentaje: 10 });
-    accionCrearItem(proyecto.id, { nombre: 'TG y TGM', porcentaje: 60, parent_id: gabinetes.id });
-    accionCrearItem(proyecto.id, { nombre: 'Resto de tableros', porcentaje: 40, parent_id: gabinetes.id });
-    accionCrearItem(proyecto.id, { nombre: 'Montantes', porcentaje: 10 });
-    accionCrearItem(proyecto.id, { nombre: 'Baterías porteros', porcentaje: 2 });
-    accionCrearItem(proyecto.id, { nombre: 'Conex. bombas', porcentaje: 1 });
-    accionCrearItem(proyecto.id, { nombre: 'Zanjeos varios', porcentaje: 1 });
-    accionCrearItem(proyecto.id, { nombre: 'Tab. AA', porcentaje: 2 });
   }
 
   if (esPrimeraVez) {
@@ -556,10 +629,9 @@ const LocalDB = (function () {
     }
     if (seg[0] === 'items') {
       if (seg.length === 2 && method === 'PUT') return accionEditarItem(seg[1], body);
-      if (seg.length === 3 && seg[2] === 'archivar' && method === 'PATCH') return accionArchivarItem(seg[1]);
+      if (seg.length === 2 && method === 'DELETE') return accionEliminarItem(seg[1]);
     }
     if (seg[0] === 'certificaciones' && seg.length === 2) {
-      if (method === 'GET') return accionDetalleCertificacion(seg[1]);
       if (method === 'PUT') return accionEditarCertificacion(seg[1], body);
       if (method === 'DELETE') return accionEliminarCertificacion(seg[1]);
     }

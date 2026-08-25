@@ -27,6 +27,26 @@ export function Input({ className, ...props }) {
   );
 }
 
+// Input de montos en pesos: mientras se escribe se ve con el separador de
+// miles "." como se usa en Argentina (ej. "1.000.000"), pero el valor que
+// entra y sale por value/onChange es siempre el número puro sin puntos, para
+// no tener que tocar la lógica de los formularios que lo usan.
+export function InputMonto({ value, onChange, className, ...props }) {
+  const soloDigitos = String(value ?? '').replace(/\D/g, '');
+  const formateado = soloDigitos ? Number(soloDigitos).toLocaleString('es-AR') : '';
+
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      value={formateado}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
+      className={className}
+      {...props}
+    />
+  );
+}
+
 // Etiqueta + control, con el <label for> ya cableado al input. Sin children
 // arma un <Input> con los props que reciba; con children (o una función que
 // recibe el id) sirve para cualquier otro control.

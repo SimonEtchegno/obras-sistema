@@ -4,7 +4,6 @@ import { Empty } from './components/ui/index.js';
 import ProyectosPage from './pages/ProyectosPage.jsx';
 import ProyectoPage from './pages/ProyectoPage.jsx';
 import CertificacionesPage from './pages/CertificacionesPage.jsx';
-import CertificacionNuevaPage from './pages/CertificacionNuevaPage.jsx';
 import UocraHistorialPage from './pages/UocraHistorialPage.jsx';
 import UocraNuevaPage from './pages/UocraNuevaPage.jsx';
 
@@ -40,7 +39,6 @@ export default function App() {
       <Route path="/" element={<ProyectosPage />} />
       <Route path="/proyecto/:id" element={<ProyectoPage />} />
       <Route path="/proyecto/:id/certificaciones" element={<CertificacionesPage />} />
-      <Route path="/proyecto/:id/certificaciones/nueva" element={<CertificacionNuevaPage />} />
       <Route path="/proyecto/:id/uocra" element={<UocraHistorialPage />} />
       <Route path="/proyecto/:id/uocra/nueva" element={<UocraNuevaPage />} />
 
@@ -52,7 +50,7 @@ export default function App() {
       />
       <Route
         path="/certificacion-nueva.html"
-        element={<RedireccionVieja param="proyecto" ruta={(id) => `/proyecto/${id}/certificaciones/nueva`} />}
+        element={<RedireccionVieja param="proyecto" ruta={(id) => `/proyecto/${id}/certificaciones`} />}
       />
       <Route
         path="/uocra-historial.html"

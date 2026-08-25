@@ -1,8 +1,8 @@
 import { useId, useState } from 'react';
 import api from '../lib/api.js';
 import cx from '../lib/cx.js';
-import { fmtMoney, fmtPct } from '../lib/format.js';
-import { Badge, Button, Card, Empty, Input, Label, Meter } from './ui/index.js';
+import { fmtFecha, fmtMoney, fmtPct, hoyIso } from '../lib/format.js';
+import { Badge, Button, Card, Empty, Input, InputMonto, Label, Meter } from './ui/index.js';
 
 function sumaPorcentajeHijos(nodo) {
   return nodo.hijos.reduce((acc, h) => acc + (Number(h.porcentaje) || 0), 0);
@@ -13,16 +13,14 @@ function sumaPorcentajeHijos(nodo) {
 function Avisos({ item }) {
   if (!item.esHoja) {
     const suma = sumaPorcentajeHijos(item);
-    return (
-      <>
-        {Math.abs(suma - 100) > 0.5 && (
-          <Badge variante="warning" title="La suma de % de los sub-ítems no da 100%">
-            ⚠ {suma.toFixed(1)}% repartido
-          </Badge>
-        )}
-        <Badge>organizativo</Badge>
-      </>
-    );
+    if (Math.abs(suma - 100) > 0.5) {
+      return (
+        <Badge variante="warning" title="La suma de % de los sub-ítems no da 100%">
+          ⚠ {suma.toFixed(1)}% repartido
+        </Badge>
+      );
+    }
+    return null;
   }
   if (item.porcentaje_avance > 100.5) {
     return (
@@ -78,17 +76,18 @@ function StatsCalculadas({ item }) {
   );
 }
 
-export function FormItem({ etiquetaNombre, etiquetaPorcentaje, onAgregar }) {
+// El % ya no se pide: los sub-ítems se reparten el 100% del padre en partes
+// iguales entre todos los hermanos, recalculado por el servidor al agregar.
+export function FormItem({ etiquetaNombre, onAgregar }) {
   const idBase = useId();
   const [nombre, setNombre] = useState('');
-  const [porcentaje, setPorcentaje] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   async function agregar() {
     if (!nombre.trim()) return;
     setGuardando(true);
     try {
-      await onAgregar({ nombre: nombre.trim(), porcentaje: parseFloat(porcentaje) || 0 });
+      await onAgregar({ nombre: nombre.trim() });
     } catch (err) {
       alert('No se pudo agregar: ' + err.message);
     } finally {
@@ -109,18 +108,6 @@ export function FormItem({ etiquetaNombre, etiquetaPorcentaje, onAgregar }) {
           onKeyDown={(e) => e.key === 'Enter' && agregar()}
         />
       </div>
-      <div className="min-w-[120px] flex-1">
-        <Label htmlFor={`${idBase}-pct`}>{etiquetaPorcentaje}</Label>
-        <Input
-          id={`${idBase}-pct`}
-          className="w-full"
-          type="number"
-          step="0.01"
-          value={porcentaje}
-          onChange={(e) => setPorcentaje(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && agregar()}
-        />
-      </div>
       <Button variante="primary" onClick={agregar} disabled={guardando}>
         Agregar
       </Button>
@@ -128,19 +115,137 @@ export function FormItem({ etiquetaNombre, etiquetaPorcentaje, onAgregar }) {
   );
 }
 
-function TarjetaItem({ item, proyectoId, recargar }) {
+function FormCertificar({ inicial, textoBoton = 'Certificar', onCertificar, onCancelar }) {
+  const idBase = useId();
+  const [fecha, setFecha] = useState(inicial?.fecha ?? hoyIso());
+  const [titulo, setTitulo] = useState(inicial?.titulo ?? '');
+  const [monto, setMonto] = useState(inicial?.monto ?? '');
+  const [guardando, setGuardando] = useState(false);
+
+  async function certificar() {
+    if (!fecha) {
+      alert('Falta la fecha.');
+      return;
+    }
+    if (!monto) {
+      alert('Falta el monto certificado.');
+      return;
+    }
+    setGuardando(true);
+    try {
+      await onCertificar({ fecha, titulo: titulo.trim(), monto: parseFloat(monto) || 0 });
+    } catch (err) {
+      alert('No se pudo guardar: ' + err.message);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-4 max-sm:flex-col max-sm:items-stretch max-sm:gap-3">
+      <div className="min-w-[150px]">
+        <Label htmlFor={`${idBase}-fecha`}>Fecha</Label>
+        <Input
+          id={`${idBase}-fecha`}
+          className="w-full"
+          type="date"
+          value={fecha}
+          onChange={(e) => setFecha(e.target.value)}
+        />
+      </div>
+      <div className="min-w-[170px] flex-[2]">
+        <Label htmlFor={`${idBase}-titulo`}>Título</Label>
+        <Input
+          id={`${idBase}-titulo`}
+          className="w-full"
+          type="text"
+          placeholder="Ej: Certificación julio 2025"
+          value={titulo}
+          onChange={(e) => setTitulo(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && certificar()}
+        />
+      </div>
+      <div className="min-w-[150px] flex-1">
+        <Label htmlFor={`${idBase}-monto`}>Monto certificado</Label>
+        <InputMonto id={`${idBase}-monto`} className="w-full" value={monto} onChange={setMonto} />
+      </div>
+      <Button variante="primary" onClick={certificar} disabled={guardando}>
+        {textoBoton}
+      </Button>
+      {onCancelar && (
+        <Button onClick={onCancelar} disabled={guardando}>
+          Cancelar
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function FilaCertificacionItem({ cert, recargar }) {
+  const [editando, setEditando] = useState(false);
+
+  if (editando) {
+    return (
+      <div className="rounded-ctl bg-surface-3 px-3 py-3">
+        <FormCertificar
+          inicial={{ fecha: cert.fecha, titulo: cert.titulo || '', monto: String(Math.round(cert.monto_certificado)) }}
+          textoBoton="Guardar"
+          onCancelar={() => setEditando(false)}
+          onCertificar={async ({ fecha, titulo, monto }) => {
+            await api.put(`/certificaciones/${cert.certificacion_id}`, { fecha, titulo, monto });
+            setEditando(false);
+            recargar();
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-ctl bg-surface-2 px-3.5 py-2.5 max-sm:flex-col max-sm:items-stretch max-sm:gap-1.5">
+      <span className="w-[92px] shrink-0 text-[12.5px] tabular-nums text-ink-muted max-sm:w-auto">
+        {fmtFecha(cert.fecha)}
+      </span>
+      <span
+        className="min-w-[120px] flex-1 truncate text-[14px] text-ink max-sm:whitespace-normal"
+        title={cert.titulo || undefined}
+      >
+        {cert.titulo || <span className="text-ink-muted">Sin título</span>}
+      </span>
+      <span className="w-[130px] shrink-0 text-right text-[14.5px] font-semibold tabular-nums text-ink max-sm:w-auto max-sm:text-left">
+        {fmtMoney(cert.monto_certificado)}
+      </span>
+      <Button chico onClick={() => setEditando(true)}>
+        Editar
+      </Button>
+    </div>
+  );
+}
+
+function CertificacionesItem({ certificaciones, recargar }) {
+  if (!certificaciones.length) return null;
+  return (
+    <div className="mt-4 border-t border-dashed border-gridline pt-4">
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-muted">
+        {certificaciones.length > 1 ? 'Certificaciones cargadas' : 'Certificación cargada'}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {certificaciones.map((cert) => (
+          <FilaCertificacionItem key={cert.detalle_id} cert={cert} recargar={recargar} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TarjetaItem({ item, proyectoId, certificaciones, recargar }) {
   const [editando, setEditando] = useState(false);
   const [subitemAbierto, setSubitemAbierto] = useState(false);
+  const [certificarAbierto, setCertificarAbierto] = useState(false);
   const [nombre, setNombre] = useState(item.nombre);
-  const [porcentaje, setPorcentaje] = useState(String(item.porcentaje));
-  const [manual, setManual] = useState(!!item.monto_base_manual);
-  const [montoBase, setMontoBase] = useState(String(Math.round(item.monto_base)));
 
   function abrirEdicion() {
     setNombre(item.nombre);
-    setPorcentaje(String(item.porcentaje));
-    setManual(!!item.monto_base_manual);
-    setMontoBase(String(Math.round(item.monto_base)));
     setEditando(true);
   }
 
@@ -149,14 +254,8 @@ function TarjetaItem({ item, proyectoId, recargar }) {
       alert('El ítem necesita un nombre.');
       return;
     }
-    const cambios = {
-      nombre: nombre.trim(),
-      porcentaje: parseFloat(porcentaje) || 0,
-      monto_base_manual: manual,
-    };
-    if (manual) cambios.monto_base = parseFloat(montoBase) || 0;
     try {
-      await api.put(`/items/${item.id}`, cambios);
+      await api.put(`/items/${item.id}`, { nombre: nombre.trim() });
       setEditando(false);
       recargar();
     } catch (err) {
@@ -164,10 +263,25 @@ function TarjetaItem({ item, proyectoId, recargar }) {
     }
   }
 
-  async function archivar() {
-    if (!confirm(`¿Archivar "${item.nombre}"? Se oculta de la lista pero no se borra su historial.`)) return;
-    await api.patch(`/items/${item.id}/archivar`);
+  async function certificarItem({ fecha, titulo, monto }) {
+    const resultado = await api.post(`/proyectos/${proyectoId}/certificaciones`, {
+      fecha,
+      descripcion: titulo,
+      detalles: [{ item_id: item.id, monto_certificado: monto }],
+    });
+    if (resultado?.avisos?.length) alert(resultado.avisos.join('\n'));
+    setCertificarAbierto(false);
     recargar();
+  }
+
+  async function borrar() {
+    if (!confirm(`¿Eliminar "${item.nombre}"? Esto borra también su historial de certificaciones y actualizaciones UOCRA. No se puede deshacer.`)) return;
+    try {
+      await api.del(`/items/${item.id}`);
+      recargar();
+    } catch (err) {
+      alert('No se pudo eliminar: ' + err.message);
+    }
   }
 
   return (
@@ -199,32 +313,10 @@ function TarjetaItem({ item, proyectoId, recargar }) {
 
           <StatsGrid>
             <Stat label="%">
-              <Input
-                type="number"
-                step="0.01"
-                value={porcentaje}
-                onChange={(e) => setPorcentaje(e.target.value)}
-                className="w-full max-w-[130px]"
-              />
+              <StatValor>{fmtPct(item.porcentaje)}</StatValor>
             </Stat>
-            <Stat
-              label={
-                <>
-                  Monto
-                  <span className="inline-flex items-center gap-1 text-[11.5px] font-normal normal-case tracking-normal text-ink-soft">
-                    <input type="checkbox" checked={manual} onChange={(e) => setManual(e.target.checked)} /> manual
-                  </span>
-                </>
-              }
-            >
-              <Input
-                type="number"
-                step="1"
-                value={montoBase}
-                disabled={!manual}
-                onChange={(e) => setMontoBase(e.target.value)}
-                className="w-full max-w-[130px]"
-              />
+            <Stat label="Monto">
+              <StatValor>{fmtMoney(item.monto_base)}</StatValor>
             </Stat>
             <StatsCalculadas item={item} />
           </StatsGrid>
@@ -235,42 +327,61 @@ function TarjetaItem({ item, proyectoId, recargar }) {
             <span className="-ml-2 flex-[1_1_220px] px-2 py-1.5 text-[15.5px] font-semibold">{item.nombre}</span>
             <Avisos item={item} />
             <div className="ml-auto flex gap-2 max-sm:ml-0 max-sm:w-full max-sm:[&>button]:flex-1">
-              <Button chico onClick={() => setSubitemAbierto((abierto) => !abierto)}>
-                + Subítem
-              </Button>
-              <Button chico onClick={abrirEdicion}>
-                Editar
-              </Button>
-              <Button chico variante="danger" onClick={archivar}>
-                Archivar
-              </Button>
+              {item.esHoja && (
+                <Button chico variante="primary" onClick={() => setCertificarAbierto((abierto) => !abierto)}>
+                  Certificar
+                </Button>
+              )}
+              {!!item.permite_subitems && (
+                <Button chico onClick={() => setSubitemAbierto((abierto) => !abierto)}>
+                  + Subítem
+                </Button>
+              )}
+              {!item.fijo && (
+                <Button chico onClick={abrirEdicion}>
+                  Editar
+                </Button>
+              )}
+              {!item.fijo && (
+                <Button chico variante="danger" onClick={borrar}>
+                  Borrar
+                </Button>
+              )}
             </div>
           </div>
 
           <StatsGrid>
             <Stat label="%">
-              <StatValor>{item.porcentaje}%</StatValor>
+              <StatValor>{fmtPct(item.porcentaje)}</StatValor>
             </Stat>
             <Stat label="Monto">
-              <StatValor>
-                {fmtMoney(item.monto_base)}
-                {item.monto_base_manual ? <Badge>manual</Badge> : null}
-              </StatValor>
+              <StatValor>{fmtMoney(item.monto_base)}</StatValor>
             </Stat>
             <StatsCalculadas item={item} />
           </StatsGrid>
         </>
       )}
 
+      {item.esHoja && (
+        <CertificacionesItem
+          certificaciones={certificaciones.filter((c) => c.item_id === item.id)}
+          recargar={recargar}
+        />
+      )}
+
+      {certificarAbierto && (
+        <div className="mt-4 border-t border-dashed border-gridline pt-4">
+          <FormCertificar onCertificar={certificarItem} />
+        </div>
+      )}
+
       {subitemAbierto && (
         <div className="mt-4 border-t border-dashed border-gridline pt-4">
           <FormItem
             etiquetaNombre="Nombre del sub-ítem"
-            etiquetaPorcentaje="% del monto de este ítem"
-            onAgregar={async ({ nombre: nuevoNombre, porcentaje: nuevoPct }) => {
+            onAgregar={async ({ nombre: nuevoNombre }) => {
               await api.post(`/proyectos/${proyectoId}/items`, {
                 nombre: nuevoNombre,
-                porcentaje: nuevoPct,
                 parent_id: item.id,
               });
               setSubitemAbierto(false);
@@ -283,14 +394,20 @@ function TarjetaItem({ item, proyectoId, recargar }) {
   );
 }
 
-function Nodo({ item, esRaiz, proyectoId, recargar }) {
+function Nodo({ item, esRaiz, proyectoId, certificaciones, recargar }) {
   return (
     <div className={esRaiz ? '' : 'border-l-2 border-gridline pl-5 max-sm:pl-3'}>
-      <TarjetaItem item={item} proyectoId={proyectoId} recargar={recargar} />
+      <TarjetaItem item={item} proyectoId={proyectoId} certificaciones={certificaciones} recargar={recargar} />
       {item.hijos && item.hijos.length > 0 && (
         <div className="mt-3.5 flex flex-col gap-3.5">
           {item.hijos.map((hijo) => (
-            <Nodo key={hijo.id} item={hijo} proyectoId={proyectoId} recargar={recargar} />
+            <Nodo
+              key={hijo.id}
+              item={hijo}
+              proyectoId={proyectoId}
+              certificaciones={certificaciones}
+              recargar={recargar}
+            />
           ))}
         </div>
       )}
@@ -298,14 +415,21 @@ function Nodo({ item, esRaiz, proyectoId, recargar }) {
   );
 }
 
-export function ArbolItems({ raices, proyectoId, recargar }) {
+export function ArbolItems({ raices, proyectoId, certificaciones = [], recargar }) {
   if (!raices.length) {
-    return <Empty>No hay ítems todavía. Agregá el primero con "+ Nuevo ítem raíz".</Empty>;
+    return <Empty>Este proyecto todavía no tiene ítems.</Empty>;
   }
   return (
     <div className="flex flex-col gap-3.5">
       {raices.map((raiz) => (
-        <Nodo key={raiz.id} item={raiz} esRaiz proyectoId={proyectoId} recargar={recargar} />
+        <Nodo
+          key={raiz.id}
+          item={raiz}
+          esRaiz
+          proyectoId={proyectoId}
+          certificaciones={certificaciones}
+          recargar={recargar}
+        />
       ))}
     </div>
   );
