@@ -55,38 +55,39 @@ function crearCertificacion(proyectoId, datos) {
   }
 }
 
-function listarCertificaciones(proyectoId) {
+// Historial "plano" para la solapa Certificaciones: una fila por ítem
+// certificado (no por certificación), con la fecha y el título de la
+// certificación a la que pertenece.
+function listarCertificacionesDetalladas(proyectoId) {
   return db.prepare(`
-    SELECT c.*,
-      (SELECT COALESCE(SUM(d.monto_certificado), 0) FROM certificacion_detalle d WHERE d.certificacion_id = c.id) as total_certificado
-    FROM certificacion c
+    SELECT d.id as detalle_id, c.id as certificacion_id, c.fecha, c.descripcion as titulo,
+           i.id as item_id, i.nombre as item_nombre, d.monto_certificado
+    FROM certificacion_detalle d
+    JOIN certificacion c ON c.id = d.certificacion_id
+    JOIN item i ON i.id = d.item_id
     WHERE c.proyecto_id = ?
-    ORDER BY c.fecha DESC, c.id DESC
+    ORDER BY c.fecha DESC, c.id DESC, d.id DESC
   `).all(proyectoId);
 }
 
-function obtenerCertificacion(id) {
+// Cada certificación tiene un solo detalle (se carga de a un ítem por vez
+// desde su propia tarjeta), así que editar la certificación es editar ese
+// único detalle.
+function editarCertificacion(id, cambios) {
   const cert = db.prepare('SELECT * FROM certificacion WHERE id = ?').get(id);
-  if (!cert) return null;
-  const detalles = db.prepare(`
-    SELECT d.*, i.nombre as item_nombre
-    FROM certificacion_detalle d
-    JOIN item i ON i.id = d.item_id
-    WHERE d.certificacion_id = ?
-    ORDER BY d.id
-  `).all(id);
-  return { ...cert, detalles };
-}
+  if (!cert) throw new Error('Certificación no encontrada.');
+  const detalle = db.prepare('SELECT * FROM certificacion_detalle WHERE certificacion_id = ?').get(id);
 
-function actualizarCertificacion(id, cambios) {
-  const actual = db.prepare('SELECT * FROM certificacion WHERE id = ?').get(id);
-  if (!actual) throw new Error('Certificación no encontrada.');
-  const numero = cambios.numero ?? actual.numero;
-  const fecha = cambios.fecha ?? actual.fecha;
-  const descripcion = cambios.descripcion ?? actual.descripcion;
-  db.prepare('UPDATE certificacion SET numero = ?, fecha = ?, descripcion = ? WHERE id = ?')
-    .run(numero, fecha, descripcion, id);
-  return obtenerCertificacion(id);
+  const fecha = cambios.fecha ?? cert.fecha;
+  const titulo = cambios.titulo !== undefined ? cambios.titulo : cert.descripcion;
+  db.prepare('UPDATE certificacion SET fecha = ?, descripcion = ? WHERE id = ?').run(fecha, titulo ?? null, id);
+
+  if (detalle && cambios.monto !== undefined && cambios.monto !== null) {
+    const monto = Number(cambios.monto);
+    const porcentaje = detalle.monto_vigente_snapshot > 0 ? (monto / detalle.monto_vigente_snapshot) * 100 : null;
+    db.prepare('UPDATE certificacion_detalle SET monto_certificado = ?, porcentaje_certificado = ? WHERE id = ?')
+      .run(monto, porcentaje, detalle.id);
+  }
 }
 
 function eliminarCertificacion(id) {
@@ -103,8 +104,7 @@ function eliminarCertificacion(id) {
 
 module.exports = {
   crearCertificacion,
-  listarCertificaciones,
-  obtenerCertificacion,
-  actualizarCertificacion,
+  listarCertificacionesDetalladas,
+  editarCertificacion,
   eliminarCertificacion,
 };

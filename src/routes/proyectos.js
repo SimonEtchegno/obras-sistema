@@ -24,6 +24,7 @@ router.post('/', (req, res) => {
     INSERT INTO proyecto (nombre, descripcion, fecha_presupuesto_original, monto_presupuesto_original, activo, fecha_creacion)
     VALUES (?, ?, ?, ?, 1, ?)
   `).run(nombre, descripcion ?? null, fecha_presupuesto_original, monto_presupuesto_original, fechaCreacion);
+  itemsTree.crearItemsFijos(resultado.lastInsertRowid);
   const proyecto = db.prepare('SELECT * FROM proyecto WHERE id = ?').get(resultado.lastInsertRowid);
   res.status(201).json(proyecto);
 });
@@ -63,7 +64,7 @@ router.get('/:id/items', (req, res) => {
 });
 
 router.post('/:id/items', (req, res) => {
-  const { nombre, parent_id, orden, porcentaje, monto_base, monto_base_manual } = req.body;
+  const { nombre, parent_id, orden } = req.body;
   if (!nombre) return res.status(400).json({ error: 'El ítem necesita un nombre.' });
   try {
     const item = itemsTree.crearItem({
@@ -71,9 +72,6 @@ router.post('/:id/items', (req, res) => {
       parent_id: parent_id || null,
       nombre,
       orden,
-      porcentaje,
-      monto_base,
-      monto_base_manual,
     });
     res.status(201).json(item);
   } catch (err) {
@@ -82,7 +80,7 @@ router.post('/:id/items', (req, res) => {
 });
 
 router.get('/:id/certificaciones', (req, res) => {
-  res.json(certificacionService.listarCertificaciones(req.params.id));
+  res.json(certificacionService.listarCertificacionesDetalladas(req.params.id));
 });
 
 router.post('/:id/certificaciones', (req, res) => {

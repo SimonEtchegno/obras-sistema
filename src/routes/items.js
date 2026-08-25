@@ -12,9 +12,13 @@ router.put('/:id', (req, res) => {
   }
 });
 
-router.patch('/:id/archivar', (req, res) => {
-  itemsTree.archivarItem(req.params.id);
-  res.json({ ok: true });
+router.delete('/:id', (req, res) => {
+  try {
+    itemsTree.borrarItem(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 module.exports = router;

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../lib/api.js';
 import { fmtFecha, fmtMoney } from '../lib/format.js';
@@ -8,26 +7,27 @@ import { Container, Crumb, H1, Section, SectionTitle, Subtitle, Toolbar, TopBar 
 import ProyectoTabs from '../components/ProyectoTabs.jsx';
 import PieComposicion from '../components/PieComposicion.jsx';
 import ComparacionPresupuesto from '../components/ComparacionPresupuesto.jsx';
-import ArbolItems, { FormItem } from '../components/ArbolItems.jsx';
+import ArbolItems from '../components/ArbolItems.jsx';
 import { IconoCheck, IconoDocumento, IconoReloj, IconoTendencia } from '../components/Icons.jsx';
 import { Button, Card, Empty, ErrorAlert, KpiRow, KpiTile, Meter } from '../components/ui/index.js';
 
 export default function ProyectoPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [formRaizAbierto, setFormRaizAbierto] = useState(false);
 
   const { datos, error, cargando, recargar } = useCargar(
     () =>
-      Promise.all([api.get(`/proyectos/${id}`), api.get(`/proyectos/${id}/items`)]).then(([proyecto, arbol]) => ({
-        proyecto,
-        arbol,
-      })),
+      Promise.all([
+        api.get(`/proyectos/${id}`),
+        api.get(`/proyectos/${id}/items`),
+        api.get(`/proyectos/${id}/certificaciones`),
+      ]).then(([proyecto, arbol, certificaciones]) => ({ proyecto, arbol, certificaciones })),
     [id]
   );
 
   const proyecto = datos?.proyecto;
   const arbol = datos?.arbol ?? [];
+  const certificaciones = datos?.certificaciones ?? [];
   useTitulo(proyecto ? `${proyecto.nombre} — Sistema de Obras` : 'Proyecto — Sistema de Obras');
 
   if (!proyecto) {
@@ -63,7 +63,6 @@ export default function ProyectoPage() {
             </Subtitle>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => navigate(`/proyecto/${id}/certificaciones/nueva`)}>+ Certificación</Button>
             <Button onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>+ Actualización UOCRA</Button>
           </div>
         </Toolbar>
@@ -113,30 +112,13 @@ export default function ProyectoPage() {
 
         <Section>
           <Card>
-            <Toolbar>
-              <SectionTitle className="mb-0">Ítems del presupuesto</SectionTitle>
-              <Button onClick={() => setFormRaizAbierto((abierto) => !abierto)}>+ Nuevo ítem raíz</Button>
-            </Toolbar>
+            <SectionTitle>Ítems del presupuesto</SectionTitle>
             <Subtitle>
               Los ítems con subdivisiones son organizativos: su monto y avance son la suma de sus hijos. Solo se
               certifica y se actualiza por UOCRA sobre ítems finales (sin subdivisiones).
             </Subtitle>
 
-            {formRaizAbierto && (
-              <Card className="mb-4">
-                <FormItem
-                  etiquetaNombre="Nombre del ítem"
-                  etiquetaPorcentaje="% del presupuesto total"
-                  onAgregar={async ({ nombre, porcentaje }) => {
-                    await api.post(`/proyectos/${id}/items`, { nombre, porcentaje, parent_id: null });
-                    setFormRaizAbierto(false);
-                    recargar();
-                  }}
-                />
-              </Card>
-            )}
-
-            <ArbolItems raices={arbol} proyectoId={id} recargar={recargar} />
+            <ArbolItems raices={arbol} proyectoId={id} certificaciones={certificaciones} recargar={recargar} />
           </Card>
         </Section>
       </Container>

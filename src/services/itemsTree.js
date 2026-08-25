@@ -1,5 +1,47 @@
 const db = require('../db');
 
+// Estructura fija de ítems que arma todo proyecto nuevo. Los ítems marcados
+// con permiteSubitems son los únicos donde el usuario puede agregar
+// sub-ítems propios (a mano); el resto de la estructura no se puede tocar.
+const ITEMS_FIJOS = [
+  {
+    nombre: 'Cañerías',
+    porcentaje: 44,
+    hijos: [
+      { nombre: 'Losas', porcentaje: 65, permiteSubitems: true },
+      { nombre: 'Paredes', porcentaje: 35, permiteSubitems: true },
+    ],
+  },
+  { nombre: 'Cableado y col. Llaves', porcentaje: 30, permiteSubitems: true },
+  {
+    nombre: 'Gabinetes y tableros',
+    porcentaje: 10,
+    hijos: [
+      { nombre: 'TG y TGM', porcentaje: 60, permiteSubitems: true },
+      { nombre: 'Resto de tableros', porcentaje: 40, permiteSubitems: true },
+    ],
+  },
+  { nombre: 'Montantes', porcentaje: 10, permiteSubitems: true },
+  { nombre: 'Baterías porteros', porcentaje: 2, permiteSubitems: true },
+  { nombre: 'Conex. Bombas', porcentaje: 1, permiteSubitems: true },
+  { nombre: 'Zanjeos Varios', porcentaje: 1, permiteSubitems: true },
+  { nombre: 'Tab. AA', porcentaje: 2, permiteSubitems: true },
+];
+
+function crearItemsFijos(proyectoId) {
+  function crear(nodo, parentId, orden) {
+    const resultado = db.prepare(`
+      INSERT INTO item (proyecto_id, parent_id, nombre, orden, porcentaje, monto_base, monto_base_manual, activo, fijo, permite_subitems)
+      VALUES (?, ?, ?, ?, ?, 0, 0, 1, 1, ?)
+    `).run(proyectoId, parentId || null, nodo.nombre, orden, nodo.porcentaje, nodo.permiteSubitems ? 1 : 0);
+    const id = resultado.lastInsertRowid;
+    (nodo.hijos || []).forEach((hijo, i) => crear(hijo, id, i));
+    return id;
+  }
+  ITEMS_FIJOS.forEach((raiz, i) => crear(raiz, null, i));
+  recomputeProyecto(proyectoId);
+}
+
 function getItem(id) {
   return db.prepare('SELECT * FROM item WHERE id = ?').get(Number(id));
 }
@@ -40,62 +82,59 @@ function recomputeProyecto(proyectoId) {
   for (const r of raices) recomputeSubtree(r.id);
 }
 
-function crearItem({ proyecto_id, parent_id, nombre, orden, porcentaje, monto_base, monto_base_manual }) {
-  const esManual = monto_base_manual ? 1 : 0;
-  const montoInicial = esManual && monto_base != null ? monto_base : 0;
+// Los sub-ítems creados a mano no llevan % propio: siempre se reparten el
+// 100% del padre en partes iguales entre todos los hermanos. Se recalcula
+// cada vez que se agrega o se borra uno.
+function repartirHermanosPorIgual(parentId) {
+  const hermanos = db.prepare('SELECT id FROM item WHERE parent_id = ? AND activo = 1 ORDER BY orden, id').all(parentId);
+  if (!hermanos.length) return;
+  const porcentajeIgual = 100 / hermanos.length;
+  for (const h of hermanos) {
+    db.prepare('UPDATE item SET porcentaje = ? WHERE id = ?').run(porcentajeIgual, h.id);
+  }
+}
+
+function crearItem({ proyecto_id, parent_id, nombre, orden }) {
+  if (!parent_id) throw new Error('Los ítems del presupuesto son fijos: solo se pueden agregar sub-ítems dentro de un ítem que lo permita.');
+  const padre = getItem(parent_id);
+  if (!padre || !padre.permite_subitems) {
+    throw new Error('No se pueden agregar sub-ítems dentro de este ítem.');
+  }
   const resultado = db.prepare(`
-    INSERT INTO item (proyecto_id, parent_id, nombre, orden, porcentaje, monto_base, monto_base_manual, activo)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-  `).run(proyecto_id, parent_id || null, nombre, orden || 0, porcentaje || 0, montoInicial, esManual);
+    INSERT INTO item (proyecto_id, parent_id, nombre, orden, porcentaje, monto_base, monto_base_manual, activo, fijo, permite_subitems)
+    VALUES (?, ?, ?, ?, 0, 0, 0, 1, 0, 0)
+  `).run(proyecto_id, parent_id, nombre, orden || 0);
   const id = resultado.lastInsertRowid;
-  recomputeSubtree(id);
+  repartirHermanosPorIgual(parent_id);
+  recomputeSubtree(parent_id);
   return getItem(id);
 }
 
+// Un sub-ítem solo tiene nombre editable: su % (y por lo tanto su monto) es
+// siempre automático, y su avance se corrige editando las certificaciones,
+// no el ítem.
 function actualizarItem(id, cambios) {
   const actual = getItem(id);
   if (!actual) throw new Error('Ítem no encontrado.');
+  if (actual.fijo) throw new Error('Los ítems fijos del presupuesto no se pueden editar.');
   const nombre = cambios.nombre ?? actual.nombre;
-  const orden = cambios.orden ?? actual.orden;
-  const porcentaje = cambios.porcentaje ?? actual.porcentaje;
-  const parent_id = cambios.parent_id !== undefined ? cambios.parent_id : actual.parent_id;
-
-  let monto_base = actual.monto_base;
-  let monto_base_manual = actual.monto_base_manual;
-  if (cambios.monto_base !== undefined && cambios.monto_base !== null) {
-    monto_base = cambios.monto_base;
-    monto_base_manual = 1;
-  }
-  if (cambios.monto_base_manual !== undefined) {
-    monto_base_manual = cambios.monto_base_manual ? 1 : 0;
-  }
-
-  if (parent_id) {
-    let cursor = parent_id;
-    while (cursor) {
-      if (Number(cursor) === Number(id)) throw new Error('No se puede mover un ítem dentro de sí mismo.');
-      const padre = getItem(cursor);
-      cursor = padre ? padre.parent_id : null;
-    }
-  }
-
-  db.prepare(`
-    UPDATE item SET nombre = ?, orden = ?, porcentaje = ?, parent_id = ?, monto_base = ?, monto_base_manual = ?
-    WHERE id = ?
-  `).run(nombre, orden, porcentaje, parent_id || null, monto_base, monto_base_manual, id);
-
-  recomputeSubtree(id);
+  db.prepare('UPDATE item SET nombre = ? WHERE id = ?').run(nombre, id);
   return getItem(id);
 }
 
-function archivarItem(id) {
-  db.prepare('UPDATE item SET activo = 0 WHERE id = ?').run(id);
-}
-
-function tieneHistorial(id) {
-  const cert = db.prepare('SELECT COUNT(*) as c FROM certificacion_detalle WHERE item_id = ?').get(id);
-  const uocra = db.prepare('SELECT COUNT(*) as c FROM actualizacion_uocra_efecto WHERE item_id = ?').get(id);
-  return cert.c > 0 || uocra.c > 0;
+function borrarItem(id) {
+  const item = getItem(id);
+  if (!item) return;
+  if (item.fijo) throw new Error('Los ítems fijos del presupuesto no se pueden eliminar.');
+  const hijos = db.prepare('SELECT id FROM item WHERE parent_id = ?').all(id);
+  for (const hijo of hijos) borrarItem(hijo.id);
+  db.prepare('DELETE FROM certificacion_detalle WHERE item_id = ?').run(id);
+  db.prepare('DELETE FROM actualizacion_uocra_efecto WHERE item_id = ?').run(id);
+  db.prepare('DELETE FROM item WHERE id = ?').run(id);
+  if (item.parent_id) {
+    repartirHermanosPorIgual(item.parent_id);
+    recomputeSubtree(item.parent_id);
+  }
 }
 
 module.exports = {
@@ -103,8 +142,8 @@ module.exports = {
   getProyecto,
   recomputeSubtree,
   recomputeProyecto,
+  crearItemsFijos,
   crearItem,
   actualizarItem,
-  archivarItem,
-  tieneHistorial,
+  borrarItem,
 };

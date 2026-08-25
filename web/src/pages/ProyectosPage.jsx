@@ -6,7 +6,7 @@ import useCargar from '../hooks/useCargar.js';
 import useTitulo from '../hooks/useTitulo.js';
 import { Container, H1, Subtitle, Toolbar, TopBar } from '../components/Layout.jsx';
 import {
-  Button, Card, Empty, ErrorAlert, Field, FieldRow, Meter, Table, TBody, Td, Th, THead, Tr,
+  Button, Card, Empty, ErrorAlert, Field, FieldRow, InputMonto, Meter, Table, TBody, Td, Th, THead, Tr,
 } from '../components/ui/index.js';
 
 function FormNuevoProyecto({ onCancelar, onCreado }) {
@@ -62,14 +62,11 @@ function FormNuevoProyecto({ onCancelar, onCreado }) {
           value={fecha}
           onChange={(e) => setFecha(e.target.value)}
         />
-        <Field
-          className="min-w-[170px] flex-1"
-          label="Monto del presupuesto original ($)"
-          type="number"
-          placeholder="Ej: 53000000"
-          value={monto}
-          onChange={(e) => setMonto(e.target.value)}
-        />
+        <Field className="min-w-[170px] flex-1" label="Monto del presupuesto original ($)">
+          {(id) => (
+            <InputMonto id={id} className="w-full" placeholder="Ej: 53.000.000" value={monto} onChange={setMonto} />
+          )}
+        </Field>
       </FieldRow>
 
       <Field
