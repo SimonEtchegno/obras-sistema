@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import api from '../lib/api.js';
 import cx from '../lib/cx.js';
 import { fmtFecha, fmtMoney, fmtPct, hoyIso } from '../lib/format.js';
+import { estiloRamaItem, estiloTarjetaItem, huesDeRaices } from '../lib/colores.js';
 import { Badge, Button, Card, Empty, Input, InputMonto, Label, Meter } from './ui/index.js';
 
 function sumaPorcentajeHijos(nodo) {
@@ -238,7 +239,7 @@ function CertificacionesItem({ certificaciones, recargar }) {
   );
 }
 
-function TarjetaItem({ item, proyectoId, certificaciones, recargar }) {
+function TarjetaItem({ item, proyectoId, certificaciones, recargar, hue, esRaiz }) {
   const [editando, setEditando] = useState(false);
   const [subitemAbierto, setSubitemAbierto] = useState(false);
   const [certificarAbierto, setCertificarAbierto] = useState(false);
@@ -275,7 +276,7 @@ function TarjetaItem({ item, proyectoId, certificaciones, recargar }) {
   }
 
   async function borrar() {
-    if (!confirm(`¿Eliminar "${item.nombre}"? Esto borra también su historial de certificaciones y actualizaciones UOCRA. No se puede deshacer.`)) return;
+    if (!confirm(`¿Eliminar "${item.nombre}"? Esto borra también su historial de certificaciones y actualizaciones. No se puede deshacer.`)) return;
     try {
       await api.del(`/items/${item.id}`);
       recargar();
@@ -290,6 +291,7 @@ function TarjetaItem({ item, proyectoId, certificaciones, recargar }) {
         'px-[22px] py-5 transition-[box-shadow,border-color] duration-150 hover:shadow-card-md',
         !item.esHoja && 'bg-glass-2'
       )}
+      style={estiloTarjetaItem(hue, esRaiz)}
     >
       {editando ? (
         <>
@@ -394,10 +396,22 @@ function TarjetaItem({ item, proyectoId, certificaciones, recargar }) {
   );
 }
 
-function Nodo({ item, esRaiz, proyectoId, certificaciones, recargar }) {
+// El tono viaja del ítem raíz hacia abajo: todo un grupo comparte color, y la
+// línea de indentación de los hijos lo toma también.
+function Nodo({ item, esRaiz, proyectoId, certificaciones, recargar, hue }) {
   return (
-    <div className={esRaiz ? '' : 'border-l-2 border-gridline pl-5 max-sm:pl-3'}>
-      <TarjetaItem item={item} proyectoId={proyectoId} certificaciones={certificaciones} recargar={recargar} />
+    <div
+      className={esRaiz ? '' : 'border-l-2 border-gridline pl-5 max-sm:pl-3'}
+      style={esRaiz ? undefined : estiloRamaItem(hue)}
+    >
+      <TarjetaItem
+        item={item}
+        proyectoId={proyectoId}
+        certificaciones={certificaciones}
+        recargar={recargar}
+        hue={hue}
+        esRaiz={esRaiz}
+      />
       {item.hijos && item.hijos.length > 0 && (
         <div className="mt-3.5 flex flex-col gap-3.5">
           {item.hijos.map((hijo) => (
@@ -407,6 +421,7 @@ function Nodo({ item, esRaiz, proyectoId, certificaciones, recargar }) {
               proyectoId={proyectoId}
               certificaciones={certificaciones}
               recargar={recargar}
+              hue={hue}
             />
           ))}
         </div>
@@ -419,9 +434,11 @@ export function ArbolItems({ raices, proyectoId, certificaciones = [], recargar 
   if (!raices.length) {
     return <Empty>Este proyecto todavía no tiene ítems.</Empty>;
   }
+  // Un tono por ítem raíz, el mismo que le da la torta de composición.
+  const hues = huesDeRaices(raices.length);
   return (
     <div className="flex flex-col gap-3.5">
-      {raices.map((raiz) => (
+      {raices.map((raiz, i) => (
         <Nodo
           key={raiz.id}
           item={raiz}
@@ -429,6 +446,7 @@ export function ArbolItems({ raices, proyectoId, certificaciones = [], recargar 
           proyectoId={proyectoId}
           certificaciones={certificaciones}
           recargar={recargar}
+          hue={hues[i]}
         />
       ))}
     </div>

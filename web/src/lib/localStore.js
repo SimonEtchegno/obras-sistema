@@ -15,9 +15,11 @@ const LocalDB = (function () {
       certificacionDetalles: [],
       actualizacionesUocra: [],
       actualizacionUocraEfectos: [],
+      extras: [],
       seq: {
         proyectos: 1, items: 1, certificaciones: 1,
         certificacionDetalles: 1, actualizacionesUocra: 1, actualizacionUocraEfectos: 1,
+        extras: 1,
       },
     };
   }
@@ -64,7 +66,10 @@ const LocalDB = (function () {
     console.error('No se pudo leer localStorage, arranco de cero:', e);
     data = estructuraVacia();
   }
-  // Completa campos por si vienen de una versión vieja de la estructura.
+  // Completa campos por si vienen de una versión vieja de la estructura: las
+  // tablas que se agregaron después (ej. extras) no están en los datos ya
+  // guardados en el navegador.
+  data = Object.assign(estructuraVacia(), data);
   data.seq = Object.assign(estructuraVacia().seq, data.seq);
 
   function guardar() {
@@ -488,25 +493,49 @@ const LocalDB = (function () {
     return { ok: true };
   }
 
-  // ---------- acciones: actualizaciones UOCRA ----------
+  // ---------- acciones: actualizaciones (UOCRA / índice de la construcción) ----------
 
-  function elegirItemsObjetivo(proyectoId, alcance, itemIds) {
-    const hojas = listarHojas(proyectoId);
-    if (alcance === 'seleccion') {
-      const set = new Set((itemIds || []).map(Number));
-      const objetivo = hojas.filter((h) => set.has(h.id));
-      if (!objetivo.length) throw new Error('No se seleccionó ningún ítem para la actualización.');
-      return objetivo;
+  const TIPOS_ACTUALIZACION_VALIDOS = ['uocra', 'indice_construccion'];
+
+  function validarTipoActualizacion(tipo) {
+    if (!TIPOS_ACTUALIZACION_VALIDOS.includes(tipo)) {
+      throw new Error('El tipo de actualización debe ser "uocra" o "indice_construccion".');
     }
-    return hojas;
+  }
+
+  // Siempre afecta a todo el proyecto: no se puede elegir un subconjunto de ítems.
+  function elegirItemsObjetivo(proyectoId) {
+    return listarHojas(proyectoId);
+  }
+
+  // El aumento se carga como % o como monto total. El monto se reparte entre
+  // los ítems a prorrata de su saldo pendiente, que es lo mismo que aplicar el
+  // % que ese monto representa sobre el saldo total — así el cálculo de abajo
+  // es uno solo, sin importar cómo se cargó.
+  function porcentajeEfectivo(objetivo, datos) {
+    if (datos.modo === 'monto') {
+      const valor = Number(datos.monto);
+      if (!Number.isFinite(valor)) throw new Error('El monto de aumento no es un número válido.');
+      const saldoTotal = objetivo.reduce((acc, item) => acc + item.saldo_pendiente, 0);
+      if (saldoTotal <= 0) {
+        throw new Error(
+          'El proyecto no tiene saldo pendiente, así que no hay dónde repartir un monto de aumento. Cargalo como porcentaje o certificá menos.'
+        );
+      }
+      return (valor / saldoTotal) * 100;
+    }
+    const valor = Number(datos.porcentaje);
+    if (!Number.isFinite(valor)) throw new Error('El porcentaje de aumento no es un número válido.');
+    return valor;
   }
 
   function accionPreviewUocra(proyectoId, body) {
     requireProyecto(proyectoId);
     body = body || {};
-    const objetivo = elegirItemsObjetivo(proyectoId, body.alcance, body.item_ids);
+    const objetivo = elegirItemsObjetivo(proyectoId);
+    const pct = porcentajeEfectivo(objetivo, body);
     return objetivo.map((item) => {
-      const ajuste = item.saldo_pendiente * (body.porcentaje / 100);
+      const ajuste = item.saldo_pendiente * (pct / 100);
       return {
         item_id: item.id,
         item_nombre: item.nombre,
@@ -520,14 +549,20 @@ const LocalDB = (function () {
   function accionCrearUocra(proyectoId, datos) {
     requireProyecto(proyectoId);
     datos = datos || {};
-    const objetivo = elegirItemsObjetivo(proyectoId, datos.alcance, datos.item_ids);
+    validarTipoActualizacion(datos.tipo);
+    const objetivo = elegirItemsObjetivo(proyectoId);
+    // Se guarda siempre el % (el ingresado, o el que equivale al monto
+    // cargado): es lo que necesita el cálculo, y el monto total queda
+    // registrado igual como la suma de los efectos.
+    const porcentaje = porcentajeEfectivo(objetivo, datos);
 
     const actualizacion = {
       id: nuevoId('actualizacionesUocra'),
       proyecto_id: Number(proyectoId),
       fecha: datos.fecha,
-      porcentaje: Number(datos.porcentaje),
-      alcance: datos.alcance,
+      tipo: datos.tipo,
+      porcentaje,
+      alcance: 'todos',
       motivo: datos.motivo ?? null,
       fecha_creacion: ahora(),
     };
@@ -557,6 +592,7 @@ const LocalDB = (function () {
     return data.actualizacionesUocra
       .filter((a) => a.proyecto_id === Number(proyectoId))
       .map((a) => Object.assign({}, a, {
+        tipo: a.tipo || 'uocra',
         total_ajuste: data.actualizacionUocraEfectos
           .filter((e) => e.actualizacion_id === a.id)
           .reduce((acc, e) => acc + e.monto_ajuste, 0),
@@ -577,7 +613,11 @@ const LocalDB = (function () {
     const efectos = data.actualizacionUocraEfectos
       .filter((e) => e.actualizacion_id === act.id)
       .map((e) => Object.assign({}, e, { item_nombre: (getItem(e.item_id) || {}).nombre || '(ítem borrado)' }));
-    return Object.assign({}, act, { efectos, es_la_mas_reciente: esLaMasReciente(act.proyecto_id, act.id) });
+    return Object.assign({}, act, {
+      tipo: act.tipo || 'uocra',
+      efectos,
+      es_la_mas_reciente: esLaMasReciente(act.proyecto_id, act.id),
+    });
   }
 
   function accionEliminarUocra(id) {
@@ -590,6 +630,60 @@ const LocalDB = (function () {
     data.actualizacionesUocra = data.actualizacionesUocra.filter((a) => a.id !== act.id);
     guardar();
     return { ok: true, advertencia };
+  }
+
+  // ---------- acciones: extras ----------
+
+  // Los extras van aparte del árbol de ítems a propósito: son un registro al
+  // costado del presupuesto, no una parte de él. Al no ser ítems, no entran en
+  // los rollups, no se certifican y no los tocan las actualizaciones — no hay
+  // nada que excluir en esos cálculos.
+
+  function tituloExtraValido(titulo) {
+    const limpio = (titulo ?? '').trim();
+    if (!limpio) throw new Error('El extra necesita un título.');
+    return limpio;
+  }
+
+  function accionListarExtras(proyectoId) {
+    requireProyecto(proyectoId);
+    const extras = data.extras
+      .filter((e) => e.proyecto_id === Number(proyectoId))
+      .sort((a, b) => (a.fecha_creacion < b.fecha_creacion ? 1 : a.fecha_creacion > b.fecha_creacion ? -1 : b.id - a.id));
+    return { extras, total: extras.reduce((acc, e) => acc + e.monto, 0) };
+  }
+
+  function accionCrearExtra(proyectoId, body) {
+    requireProyecto(proyectoId);
+    body = body || {};
+    const extra = {
+      id: nuevoId('extras'),
+      proyecto_id: Number(proyectoId),
+      titulo: tituloExtraValido(body.titulo),
+      monto: Number(body.monto) || 0,
+      fecha_creacion: ahora(),
+    };
+    data.extras.push(extra);
+    guardar();
+    return extra;
+  }
+
+  function accionEditarExtra(id, cambios) {
+    const extra = data.extras.find((e) => e.id === Number(id));
+    if (!extra) throw new Error('Extra no encontrado.');
+    cambios = cambios || {};
+    if (cambios.titulo !== undefined) extra.titulo = tituloExtraValido(cambios.titulo);
+    if (cambios.monto !== undefined && cambios.monto !== null) extra.monto = Number(cambios.monto) || 0;
+    guardar();
+    return extra;
+  }
+
+  function accionEliminarExtra(id) {
+    const extra = data.extras.find((e) => e.id === Number(id));
+    if (!extra) throw new Error('Extra no encontrado.');
+    data.extras = data.extras.filter((e) => e.id !== extra.id);
+    guardar();
+    return { ok: true };
   }
 
   // ---------- ejemplo inicial (solo la primera vez que se abre en un navegador) ----------
@@ -626,6 +720,8 @@ const LocalDB = (function () {
       if (seg.length === 3 && seg[2] === 'actualizaciones-uocra' && method === 'GET') return accionListarUocra(seg[1]);
       if (seg.length === 3 && seg[2] === 'actualizaciones-uocra' && method === 'POST') return accionCrearUocra(seg[1], body);
       if (seg.length === 4 && seg[2] === 'actualizaciones-uocra' && seg[3] === 'preview' && method === 'POST') return accionPreviewUocra(seg[1], body);
+      if (seg.length === 3 && seg[2] === 'extras' && method === 'GET') return accionListarExtras(seg[1]);
+      if (seg.length === 3 && seg[2] === 'extras' && method === 'POST') return accionCrearExtra(seg[1], body);
     }
     if (seg[0] === 'items') {
       if (seg.length === 2 && method === 'PUT') return accionEditarItem(seg[1], body);
@@ -638,6 +734,10 @@ const LocalDB = (function () {
     if (seg[0] === 'actualizaciones-uocra' && seg.length === 2) {
       if (method === 'GET') return accionDetalleUocra(seg[1]);
       if (method === 'DELETE') return accionEliminarUocra(seg[1]);
+    }
+    if (seg[0] === 'extras' && seg.length === 2) {
+      if (method === 'PUT') return accionEditarExtra(seg[1], body);
+      if (method === 'DELETE') return accionEliminarExtra(seg[1]);
     }
     throw new Error(`Ruta local no reconocida: ${method} ${path}`);
   }

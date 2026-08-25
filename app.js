@@ -5,6 +5,7 @@ const proyectosRouter = require('./src/routes/proyectos');
 const itemsRouter = require('./src/routes/items');
 const certificacionesRouter = require('./src/routes/certificaciones');
 const uocraRouter = require('./src/routes/uocra');
+const extrasRouter = require('./src/routes/extras');
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.use('/api/proyectos', proyectosRouter);
 app.use('/api/items', itemsRouter);
 app.use('/api/certificaciones', certificacionesRouter);
 app.use('/api/actualizaciones-uocra', uocraRouter);
+app.use('/api/extras', extrasRouter);
 
 // El front es la SPA de React que compila Vite (web/ → dist/).
 const distDir = path.join(__dirname, 'dist');

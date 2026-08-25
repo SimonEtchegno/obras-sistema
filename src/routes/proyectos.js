@@ -4,6 +4,7 @@ const { getArbolConRollups, resumenProyecto } = require('../services/rollups');
 const itemsTree = require('../services/itemsTree');
 const certificacionService = require('../services/certificacionService');
 const uocraService = require('../services/uocraService');
+const extrasService = require('../services/extrasService');
 
 const router = express.Router();
 
@@ -108,6 +109,18 @@ router.post('/:id/actualizaciones-uocra', (req, res) => {
   try {
     const resultado = uocraService.crearActualizacion(req.params.id, req.body);
     res.status(201).json(resultado);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/:id/extras', (req, res) => {
+  res.json(extrasService.listarExtras(req.params.id));
+});
+
+router.post('/:id/extras', (req, res) => {
+  try {
+    res.status(201).json(extrasService.crearExtra(req.params.id, req.body));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

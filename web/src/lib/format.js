@@ -7,6 +7,15 @@ export function fmtPct(n) {
   return (Number(n) || 0).toFixed(1) + '%';
 }
 
+const NOMBRES_TIPO_ACTUALIZACION = {
+  uocra: 'UOCRA',
+  indice_construccion: 'Índice de la construcción',
+};
+
+export function fmtTipoActualizacion(tipo) {
+  return NOMBRES_TIPO_ACTUALIZACION[tipo] || 'UOCRA';
+}
+
 export function fmtFecha(iso) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
