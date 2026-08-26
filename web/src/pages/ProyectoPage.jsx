@@ -5,6 +5,7 @@ import useCargar from '../hooks/useCargar.js';
 import useTitulo from '../hooks/useTitulo.js';
 import { Container, Crumb, H1, Section, SectionTitle, Subtitle, Toolbar, TopBar } from '../components/Layout.jsx';
 import ProyectoTabs from '../components/ProyectoTabs.jsx';
+import MenuExportar from '../components/MenuExportar.jsx';
 import PieComposicion from '../components/PieComposicion.jsx';
 import ArbolItems from '../components/ArbolItems.jsx';
 import Extras from '../components/Extras.jsx';
@@ -63,6 +64,7 @@ export default function ProyectoPage() {
             </Subtitle>
           </div>
           <div className="flex flex-wrap gap-2">
+            <MenuExportar proyectoId={id} proyecto={proyecto} />
             <Button onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>+ Actualización</Button>
           </div>
         </Toolbar>
