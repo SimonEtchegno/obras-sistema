@@ -9,7 +9,7 @@ import MenuExportar from '../components/MenuExportar.jsx';
 import PieComposicion from '../components/PieComposicion.jsx';
 import ArbolItems from '../components/ArbolItems.jsx';
 import Extras from '../components/Extras.jsx';
-import { IconoCheck, IconoDocumento, IconoReloj, IconoTendencia } from '../components/Icons.jsx';
+import { IconoActualizar, IconoCheck, IconoDocumento, IconoReloj, IconoTendencia } from '../components/Icons.jsx';
 import { Button, Card, Empty, ErrorAlert, KpiRow, KpiTile, Meter } from '../components/ui/index.js';
 
 export default function ProyectoPage() {
@@ -65,7 +65,10 @@ export default function ProyectoPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <MenuExportar proyectoId={id} proyecto={proyecto} />
-            <Button onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>+ Actualización</Button>
+            <Button onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>
+              <IconoActualizar />
+              + Actualización
+            </Button>
           </div>
         </Toolbar>
 
