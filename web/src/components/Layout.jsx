@@ -38,7 +38,7 @@ function ThemeToggle() {
   );
 }
 
-export function TopBar({ children }) {
+export function TopBar({ children, titulo }) {
   return (
     <div className="glass-blur sticky top-0 z-10 flex items-center gap-3 border-b border-white/12 bg-topbar px-8 py-4 max-sm:px-4 max-sm:py-3">
       <Link to="/" className="flex items-center gap-2.5 text-base font-bold tracking-[-0.01em] text-white hover:opacity-80 max-[420px]:text-[14.5px]">
@@ -48,6 +48,11 @@ export function TopBar({ children }) {
         Sistema de Obras
       </Link>
       {children && <span className="text-sm text-white/70 max-sm:text-[12.5px]">{children}</span>}
+      {titulo && (
+        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[28px] font-bold text-white max-sm:text-[25px]">
+          {titulo}
+        </span>
+      )}
       <ThemeToggle />
     </div>
   );
