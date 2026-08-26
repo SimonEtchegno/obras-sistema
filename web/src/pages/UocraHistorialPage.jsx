@@ -6,6 +6,7 @@ import useCargar from '../hooks/useCargar.js';
 import useTitulo from '../hooks/useTitulo.js';
 import { Container, Crumb, H1, Toolbar, TopBar } from '../components/Layout.jsx';
 import ProyectoTabs from '../components/ProyectoTabs.jsx';
+import MenuExportar from '../components/MenuExportar.jsx';
 import { Button, Card, Empty, ErrorAlert, Table, TBody, Td, Th, THead, Tr } from '../components/ui/index.js';
 
 function DetalleActualizacion({ efectos }) {
@@ -114,9 +115,12 @@ export default function UocraHistorialPage() {
       <Container>
         <Toolbar>
           <H1 className="mb-0">Actualizaciones</H1>
-          <Button variante="primary" onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>
-            + Actualización
-          </Button>
+          <div className="flex gap-2">
+            {proyecto && <MenuExportar proyectoId={id} proyecto={proyecto} />}
+            <Button variante="primary" onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>
+              + Actualización
+            </Button>
+          </div>
         </Toolbar>
 
         <ErrorAlert error={error} />

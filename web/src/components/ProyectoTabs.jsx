@@ -25,7 +25,7 @@ function Tab({ to, end = false, children }) {
 
 export function ProyectoTabs({ proyectoId }) {
   return (
-    <div className="glass-blur sticky top-[58px] z-[9] flex gap-1 border-b border-glass-line bg-glass-2 px-8 max-sm:top-[54px] max-sm:overflow-x-auto max-sm:px-2">
+    <div className="glass-blur sticky top-[70px] z-[9] flex gap-1 border-b border-glass-line bg-glass-2 px-8 max-sm:top-[62px] max-sm:overflow-x-auto max-sm:px-2">
       <Tab to={`/proyecto/${proyectoId}`} end>
         Resumen
       </Tab>

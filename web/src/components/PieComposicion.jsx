@@ -82,6 +82,25 @@ function LeyendaGeneral({ slices }) {
   );
 }
 
+function ResumenNodo({ nodo }) {
+  return (
+    <div className="mb-3 grid grid-cols-3 gap-1.5 rounded-lg bg-surface-2 px-3 py-2.5 text-[12.5px]">
+      <div>
+        <div className="mb-0.5 text-ink-muted">Monto vigente</div>
+        <div className="font-semibold tabular-nums">{fmtMoney(nodo.monto_vigente)}</div>
+      </div>
+      <div>
+        <div className="mb-0.5 text-ink-muted">Certificado</div>
+        <div className="font-semibold tabular-nums">{fmtMoney(nodo.certificado_acumulado)}</div>
+      </div>
+      <div>
+        <div className="mb-0.5 text-ink-muted">Avance</div>
+        <div className="font-semibold tabular-nums">{fmtPct(nodo.porcentaje_avance)}</div>
+      </div>
+    </div>
+  );
+}
+
 function LeyendaPorcion({ slice }) {
   const hijos = hijosConMontoDe(slice.nodo);
 
@@ -98,20 +117,7 @@ function LeyendaPorcion({ slice }) {
             {fmtPct(slice.share * 100)}
           </span>
         </div>
-        <div className="mt-2 flex flex-col gap-1.5 text-[13.5px]">
-          <div className="flex justify-between gap-3">
-            <span className="text-ink-muted">Monto vigente</span>
-            <b>{fmtMoney(slice.nodo.monto_vigente)}</b>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-ink-muted">Certificado</span>
-            <b>{fmtMoney(slice.nodo.certificado_acumulado)}</b>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-ink-muted">Avance</span>
-            <b>{fmtPct(slice.nodo.porcentaje_avance)}</b>
-          </div>
-        </div>
+        <ResumenNodo nodo={slice.nodo} />
       </>
     );
   }
@@ -122,15 +128,22 @@ function LeyendaPorcion({ slice }) {
       <div className="mb-2.5 text-[14.5px] font-semibold">
         {slice.nodo.nombre} <span className="font-normal text-ink-muted">— {fmtPct(slice.share * 100)} del total</span>
       </div>
-      <div className="flex flex-col gap-[9px]">
+      <ResumenNodo nodo={slice.nodo} />
+      <div className="flex flex-col gap-[11px]">
         {hijos.map((h, j) => (
-          <FilaLeyenda
-            key={h.id}
-            color={hslStr(slice.hue, 55, lightnessHijo(j))}
-            nombre={h.nombre}
-            pct={fmtPct((h.monto_vigente / totalHijos) * 100)}
-            monto={fmtMoney(h.monto_vigente)}
-          />
+          <div key={h.id}>
+            <div className="flex items-center gap-2.5 text-[13.5px]">
+              <Swatch color={hslStr(slice.hue, 55, lightnessHijo(j))} />
+              <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-ink">{h.nombre}</span>
+              <span className="text-right font-semibold tabular-nums text-ink-soft">
+                {fmtPct((h.monto_vigente / totalHijos) * 100)}
+              </span>
+            </div>
+            <div className="mt-[3px] flex gap-4 pl-[19px] text-[12px] text-ink-muted">
+              <span>Cert: <span className="font-medium text-ink-soft">{fmtMoney(h.certificado_acumulado)}</span></span>
+              <span>Avance: <span className="font-medium text-ink-soft">{fmtPct(h.porcentaje_avance)}</span></span>
+            </div>
+          </div>
         ))}
       </div>
     </>
