@@ -9,7 +9,7 @@ import MenuExportar from '../components/MenuExportar.jsx';
 import PieComposicion from '../components/PieComposicion.jsx';
 import ArbolItems from '../components/ArbolItems.jsx';
 import Extras from '../components/Extras.jsx';
-import { IconoActualizar, IconoCheck, IconoDocumento, IconoReloj, IconoTendencia } from '../components/Icons.jsx';
+import { IconoCheck, IconoDocumento, IconoReloj, IconoTendencia } from '../components/Icons.jsx';
 import { Button, Card, Empty, ErrorAlert, KpiRow, KpiTile, Meter } from '../components/ui/index.js';
 
 export default function ProyectoPage() {
@@ -34,8 +34,8 @@ export default function ProyectoPage() {
   if (!proyecto) {
     return (
       <>
-        <TopBar>
-          <Crumb to="/">Proyectos</Crumb> / …
+        <TopBar titulo="…">
+          <Crumb to="/">Proyectos</Crumb>
         </TopBar>
         <Container>
           <ErrorAlert error={error} />
@@ -49,8 +49,8 @@ export default function ProyectoPage() {
 
   return (
     <>
-      <TopBar>
-        <Crumb to="/">Proyectos</Crumb> / {proyecto.nombre}
+      <TopBar titulo={proyecto.nombre}>
+        <Crumb to="/">Proyectos</Crumb>
       </TopBar>
       <ProyectoTabs proyectoId={id} />
 
@@ -65,10 +65,7 @@ export default function ProyectoPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <MenuExportar proyectoId={id} proyecto={proyecto} />
-            <Button onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>
-              <IconoActualizar />
-              + Actualización
-            </Button>
+            <Button onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>+ Actualización</Button>
           </div>
         </Toolbar>
 
