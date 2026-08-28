@@ -1,23 +1,24 @@
 const express = require('express');
 const extrasService = require('../services/extrasService');
+const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
 
-router.put('/:id', (req, res) => {
+router.put('/:id', asyncHandler(async (req, res) => {
   try {
-    res.json(extrasService.editarExtra(req.params.id, req.body));
+    res.json(await extrasService.editarExtra(req.params.id, req.body));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', asyncHandler(async (req, res) => {
   try {
-    extrasService.eliminarExtra(req.params.id);
+    await extrasService.eliminarExtra(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
 module.exports = router;

@@ -1,28 +1,28 @@
-const db = require('../db');
+const { query } = require('../db');
 
-function getAjustesUocraPorItem(proyectoId) {
-  const filas = db.prepare(`
+async function getAjustesUocraPorItem(proyectoId) {
+  const { rows } = await query(`
     SELECT e.item_id, SUM(e.monto_ajuste) as total
     FROM actualizacion_uocra_efecto e
     JOIN actualizacion_uocra a ON a.id = e.actualizacion_id
-    WHERE a.proyecto_id = ?
+    WHERE a.proyecto_id = $1
     GROUP BY e.item_id
-  `).all(proyectoId);
+  `, [proyectoId]);
   const mapa = new Map();
-  for (const f of filas) mapa.set(f.item_id, f.total);
+  for (const f of rows) mapa.set(f.item_id, Number(f.total));
   return mapa;
 }
 
-function getCertificadoPorItem(proyectoId) {
-  const filas = db.prepare(`
+async function getCertificadoPorItem(proyectoId) {
+  const { rows } = await query(`
     SELECT d.item_id, SUM(d.monto_certificado) as total
     FROM certificacion_detalle d
     JOIN certificacion c ON c.id = d.certificacion_id
-    WHERE c.proyecto_id = ?
+    WHERE c.proyecto_id = $1
     GROUP BY d.item_id
-  `).all(proyectoId);
+  `, [proyectoId]);
   const mapa = new Map();
-  for (const f of filas) mapa.set(f.item_id, f.total);
+  for (const f of rows) mapa.set(f.item_id, Number(f.total));
   return mapa;
 }
 
@@ -30,13 +30,16 @@ function getCertificadoPorItem(proyectoId) {
 // llevan su propio monto_base + ajustes UOCRA y su certificado acumulado.
 // Los ítems padre son puramente organizativos: sus totales son la suma de
 // sus hijos, para no contar dos veces el mismo presupuesto.
-function getArbolConRollups(proyectoId) {
-  const items = db.prepare(
-    'SELECT * FROM item WHERE proyecto_id = ? AND activo = 1 ORDER BY parent_id, orden, id'
-  ).all(proyectoId);
+async function getArbolConRollups(proyectoId) {
+  const { rows: items } = await query(
+    'SELECT * FROM item WHERE proyecto_id = $1 AND activo = 1 ORDER BY parent_id, orden, id',
+    [proyectoId]
+  );
 
-  const ajustes = getAjustesUocraPorItem(proyectoId);
-  const certificado = getCertificadoPorItem(proyectoId);
+  const [ajustes, certificado] = await Promise.all([
+    getAjustesUocraPorItem(proyectoId),
+    getCertificadoPorItem(proyectoId),
+  ]);
 
   const porId = new Map();
   for (const it of items) {
@@ -79,8 +82,8 @@ function getArbolConRollups(proyectoId) {
   return raices;
 }
 
-function listarHojas(proyectoId) {
-  const raices = getArbolConRollups(proyectoId);
+async function listarHojas(proyectoId) {
+  const raices = await getArbolConRollups(proyectoId);
   const hojas = [];
   function recorrer(nodo) {
     if (nodo.esHoja) hojas.push(nodo);
@@ -90,7 +93,7 @@ function listarHojas(proyectoId) {
   return hojas;
 }
 
-function buscarItem(proyectoId, itemId) {
+async function buscarItem(proyectoId, itemId) {
   const idNum = Number(itemId);
   let encontrado = null;
   function recorrer(nodo) {
@@ -98,12 +101,12 @@ function buscarItem(proyectoId, itemId) {
     if (nodo.id === idNum) { encontrado = nodo; return; }
     nodo.hijos.forEach(recorrer);
   }
-  getArbolConRollups(proyectoId).forEach(recorrer);
+  (await getArbolConRollups(proyectoId)).forEach(recorrer);
   return encontrado;
 }
 
-function resumenProyecto(proyectoId) {
-  const raices = getArbolConRollups(proyectoId);
+async function resumenProyecto(proyectoId) {
+  const raices = await getArbolConRollups(proyectoId);
   let monto_vigente = 0;
   let certificado_acumulado = 0;
   for (const r of raices) {

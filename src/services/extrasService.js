@@ -1,4 +1,4 @@
-const db = require('../db');
+const { query } = require('../db');
 
 // Extras: trabajos o gastos que se anotan al costado del presupuesto. No
 // forman parte del árbol de ítems, así que no mueven el monto vigente ni el
@@ -10,37 +10,43 @@ function validarTitulo(titulo) {
   return limpio;
 }
 
-function listarExtras(proyectoId) {
-  const extras = db.prepare(
-    'SELECT * FROM extra WHERE proyecto_id = ? ORDER BY fecha_creacion DESC, id DESC'
-  ).all(proyectoId);
+async function listarExtras(proyectoId) {
+  const { rows: extras } = await query(
+    'SELECT * FROM extra WHERE proyecto_id = $1 ORDER BY fecha_creacion DESC, id DESC',
+    [proyectoId]
+  );
   const total = extras.reduce((acc, e) => acc + e.monto, 0);
   return { extras, total };
 }
 
-function crearExtra(proyectoId, datos) {
+async function crearExtra(proyectoId, datos) {
   const titulo = validarTitulo(datos?.titulo);
   const monto = Number(datos?.monto) || 0;
-  const resultado = db.prepare(`
+  const { rows } = await query(`
     INSERT INTO extra (proyecto_id, titulo, monto, fecha_creacion)
-    VALUES (?, ?, ?, ?)
-  `).run(proyectoId, titulo, monto, new Date().toISOString());
-  return db.prepare('SELECT * FROM extra WHERE id = ?').get(resultado.lastInsertRowid);
+    VALUES ($1, $2, $3, $4)
+    RETURNING *
+  `, [proyectoId, titulo, monto, new Date().toISOString()]);
+  return rows[0];
 }
 
-function editarExtra(id, cambios) {
-  const extra = db.prepare('SELECT * FROM extra WHERE id = ?').get(id);
+async function editarExtra(id, cambios) {
+  const { rows } = await query('SELECT * FROM extra WHERE id = $1', [id]);
+  const extra = rows[0];
   if (!extra) throw new Error('Extra no encontrado.');
   const titulo = cambios?.titulo !== undefined ? validarTitulo(cambios.titulo) : extra.titulo;
   const monto = cambios?.monto !== undefined && cambios.monto !== null ? Number(cambios.monto) || 0 : extra.monto;
-  db.prepare('UPDATE extra SET titulo = ?, monto = ? WHERE id = ?').run(titulo, monto, id);
-  return db.prepare('SELECT * FROM extra WHERE id = ?').get(id);
+  const { rows: actualizado } = await query(
+    'UPDATE extra SET titulo = $1, monto = $2 WHERE id = $3 RETURNING *',
+    [titulo, monto, id]
+  );
+  return actualizado[0];
 }
 
-function eliminarExtra(id) {
-  const extra = db.prepare('SELECT * FROM extra WHERE id = ?').get(id);
-  if (!extra) throw new Error('Extra no encontrado.');
-  db.prepare('DELETE FROM extra WHERE id = ?').run(id);
+async function eliminarExtra(id) {
+  const { rows } = await query('SELECT * FROM extra WHERE id = $1', [id]);
+  if (!rows[0]) throw new Error('Extra no encontrado.');
+  await query('DELETE FROM extra WHERE id = $1', [id]);
 }
 
 module.exports = { listarExtras, crearExtra, editarExtra, eliminarExtra };

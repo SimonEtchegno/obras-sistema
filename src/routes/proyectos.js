@@ -1,19 +1,21 @@
 const express = require('express');
-const db = require('../db');
+const { query } = require('../db');
 const { getArbolConRollups, resumenProyecto } = require('../services/rollups');
 const itemsTree = require('../services/itemsTree');
 const certificacionService = require('../services/certificacionService');
 const uocraService = require('../services/uocraService');
 const extrasService = require('../services/extrasService');
+const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
-  const proyectos = db.prepare('SELECT * FROM proyecto WHERE activo = 1 ORDER BY fecha_creacion DESC').all();
-  res.json(proyectos.map((p) => ({ ...p, resumen: resumenProyecto(p.id) })));
-});
+router.get('/', asyncHandler(async (req, res) => {
+  const { rows: proyectos } = await query('SELECT * FROM proyecto WHERE activo = 1 ORDER BY fecha_creacion DESC');
+  const conResumen = await Promise.all(proyectos.map(async (p) => ({ ...p, resumen: await resumenProyecto(p.id) })));
+  res.json(conResumen);
+}));
 
-router.post('/', (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
   const { nombre, descripcion, fecha_presupuesto_original, monto_presupuesto_original } = req.body;
   if (!nombre || !fecha_presupuesto_original || monto_presupuesto_original == null) {
     return res.status(400).json({
@@ -21,54 +23,58 @@ router.post('/', (req, res) => {
     });
   }
   const fechaCreacion = new Date().toISOString();
-  const resultado = db.prepare(`
+  const { rows } = await query(`
     INSERT INTO proyecto (nombre, descripcion, fecha_presupuesto_original, monto_presupuesto_original, activo, fecha_creacion)
-    VALUES (?, ?, ?, ?, 1, ?)
-  `).run(nombre, descripcion ?? null, fecha_presupuesto_original, monto_presupuesto_original, fechaCreacion);
-  itemsTree.crearItemsFijos(resultado.lastInsertRowid);
-  const proyecto = db.prepare('SELECT * FROM proyecto WHERE id = ?').get(resultado.lastInsertRowid);
-  res.status(201).json(proyecto);
-});
+    VALUES ($1, $2, $3, $4, 1, $5)
+    RETURNING id
+  `, [nombre, descripcion ?? null, fecha_presupuesto_original, monto_presupuesto_original, fechaCreacion]);
+  await itemsTree.crearItemsFijos(rows[0].id);
+  const { rows: proyectoRows } = await query('SELECT * FROM proyecto WHERE id = $1', [rows[0].id]);
+  res.status(201).json(proyectoRows[0]);
+}));
 
-router.get('/:id', (req, res) => {
-  const proyecto = db.prepare('SELECT * FROM proyecto WHERE id = ?').get(req.params.id);
+router.get('/:id', asyncHandler(async (req, res) => {
+  const { rows } = await query('SELECT * FROM proyecto WHERE id = $1', [req.params.id]);
+  const proyecto = rows[0];
   if (!proyecto) return res.status(404).json({ error: 'Proyecto no encontrado.' });
-  res.json({ ...proyecto, resumen: resumenProyecto(proyecto.id) });
-});
+  res.json({ ...proyecto, resumen: await resumenProyecto(proyecto.id) });
+}));
 
-router.put('/:id', (req, res) => {
-  const proyecto = db.prepare('SELECT * FROM proyecto WHERE id = ?').get(req.params.id);
+router.put('/:id', asyncHandler(async (req, res) => {
+  const { rows } = await query('SELECT * FROM proyecto WHERE id = $1', [req.params.id]);
+  const proyecto = rows[0];
   if (!proyecto) return res.status(404).json({ error: 'Proyecto no encontrado.' });
   const nombre = req.body.nombre ?? proyecto.nombre;
   const descripcion = req.body.descripcion ?? proyecto.descripcion;
   const fecha_presupuesto_original = req.body.fecha_presupuesto_original ?? proyecto.fecha_presupuesto_original;
   const monto_presupuesto_original = req.body.monto_presupuesto_original ?? proyecto.monto_presupuesto_original;
-  db.prepare(`
-    UPDATE proyecto SET nombre = ?, descripcion = ?, fecha_presupuesto_original = ?, monto_presupuesto_original = ?
-    WHERE id = ?
-  `).run(nombre, descripcion, fecha_presupuesto_original, monto_presupuesto_original, req.params.id);
-  itemsTree.recomputeProyecto(req.params.id);
-  res.json(db.prepare('SELECT * FROM proyecto WHERE id = ?').get(req.params.id));
-});
+  await query(`
+    UPDATE proyecto SET nombre = $1, descripcion = $2, fecha_presupuesto_original = $3, monto_presupuesto_original = $4
+    WHERE id = $5
+  `, [nombre, descripcion, fecha_presupuesto_original, monto_presupuesto_original, req.params.id]);
+  await itemsTree.recomputeProyecto(req.params.id);
+  const { rows: actualizado } = await query('SELECT * FROM proyecto WHERE id = $1', [req.params.id]);
+  res.json(actualizado[0]);
+}));
 
-router.patch('/:id/archivar', (req, res) => {
-  db.prepare('UPDATE proyecto SET activo = 0 WHERE id = ?').run(req.params.id);
+router.patch('/:id/archivar', asyncHandler(async (req, res) => {
+  await query('UPDATE proyecto SET activo = 0 WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
-router.get('/:id/resumen', (req, res) => {
-  res.json(resumenProyecto(req.params.id));
-});
+router.get('/:id/resumen', asyncHandler(async (req, res) => {
+  res.json(await resumenProyecto(req.params.id));
+}));
 
-router.get('/:id/items', (req, res) => {
-  res.json(getArbolConRollups(req.params.id));
-});
+router.get('/:id/items', asyncHandler(async (req, res) => {
+  res.json(await getArbolConRollups(req.params.id));
+}));
 
-router.post('/:id/items', (req, res) => {
+router.post('/:id/items', asyncHandler(async (req, res) => {
   const { nombre, parent_id, orden } = req.body;
   if (!nombre) return res.status(400).json({ error: 'El ítem necesita un nombre.' });
   try {
-    const item = itemsTree.crearItem({
+    const item = await itemsTree.crearItem({
       proyecto_id: req.params.id,
       parent_id: parent_id || null,
       nombre,
@@ -78,52 +84,52 @@ router.post('/:id/items', (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
-router.get('/:id/certificaciones', (req, res) => {
-  res.json(certificacionService.listarCertificacionesDetalladas(req.params.id));
-});
+router.get('/:id/certificaciones', asyncHandler(async (req, res) => {
+  res.json(await certificacionService.listarCertificacionesDetalladas(req.params.id));
+}));
 
-router.post('/:id/certificaciones', (req, res) => {
+router.post('/:id/certificaciones', asyncHandler(async (req, res) => {
   try {
-    const resultado = certificacionService.crearCertificacion(req.params.id, req.body);
+    const resultado = await certificacionService.crearCertificacion(req.params.id, req.body);
     res.status(201).json(resultado);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
-router.get('/:id/actualizaciones-uocra', (req, res) => {
-  res.json(uocraService.listarActualizaciones(req.params.id));
-});
+router.get('/:id/actualizaciones-uocra', asyncHandler(async (req, res) => {
+  res.json(await uocraService.listarActualizaciones(req.params.id));
+}));
 
-router.post('/:id/actualizaciones-uocra/preview', (req, res) => {
+router.post('/:id/actualizaciones-uocra/preview', asyncHandler(async (req, res) => {
   try {
-    res.json(uocraService.previsualizar(req.params.id, req.body));
+    res.json(await uocraService.previsualizar(req.params.id, req.body));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
-router.post('/:id/actualizaciones-uocra', (req, res) => {
+router.post('/:id/actualizaciones-uocra', asyncHandler(async (req, res) => {
   try {
-    const resultado = uocraService.crearActualizacion(req.params.id, req.body);
+    const resultado = await uocraService.crearActualizacion(req.params.id, req.body);
     res.status(201).json(resultado);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
-router.get('/:id/extras', (req, res) => {
-  res.json(extrasService.listarExtras(req.params.id));
-});
+router.get('/:id/extras', asyncHandler(async (req, res) => {
+  res.json(await extrasService.listarExtras(req.params.id));
+}));
 
-router.post('/:id/extras', (req, res) => {
+router.post('/:id/extras', asyncHandler(async (req, res) => {
   try {
-    res.status(201).json(extrasService.crearExtra(req.params.id, req.body));
+    res.status(201).json(await extrasService.crearExtra(req.params.id, req.body));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
 module.exports = router;

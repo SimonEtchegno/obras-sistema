@@ -1,4 +1,4 @@
-const db = require('../db');
+const { query } = require('../db');
 
 // Estructura fija de ítems que arma todo proyecto nuevo. Los ítems marcados
 // con permiteSubitems son los únicos donde el usuario puede agregar
@@ -28,34 +28,37 @@ const ITEMS_FIJOS = [
   { nombre: 'Tab. AA', porcentaje: 2, permiteSubitems: true },
 ];
 
-function crearItemsFijos(proyectoId) {
-  function crear(nodo, parentId, orden) {
-    const resultado = db.prepare(`
+async function crearItemsFijos(proyectoId) {
+  async function crear(nodo, parentId, orden) {
+    const { rows } = await query(`
       INSERT INTO item (proyecto_id, parent_id, nombre, orden, porcentaje, monto_base, monto_base_manual, activo, fijo, permite_subitems)
-      VALUES (?, ?, ?, ?, ?, 0, 0, 1, 1, ?)
-    `).run(proyectoId, parentId || null, nodo.nombre, orden, nodo.porcentaje, nodo.permiteSubitems ? 1 : 0);
-    const id = resultado.lastInsertRowid;
-    (nodo.hijos || []).forEach((hijo, i) => crear(hijo, id, i));
+      VALUES ($1, $2, $3, $4, $5, 0, 0, 1, 1, $6)
+      RETURNING id
+    `, [proyectoId, parentId || null, nodo.nombre, orden, nodo.porcentaje, nodo.permiteSubitems ? 1 : 0]);
+    const id = rows[0].id;
+    for (const [i, hijo] of (nodo.hijos || []).entries()) await crear(hijo, id, i);
     return id;
   }
-  ITEMS_FIJOS.forEach((raiz, i) => crear(raiz, null, i));
-  recomputeProyecto(proyectoId);
+  for (const [i, raiz] of ITEMS_FIJOS.entries()) await crear(raiz, null, i);
+  await recomputeProyecto(proyectoId);
 }
 
-function getItem(id) {
-  return db.prepare('SELECT * FROM item WHERE id = ?').get(Number(id));
+async function getItem(id) {
+  const { rows } = await query('SELECT * FROM item WHERE id = $1', [Number(id)]);
+  return rows[0];
 }
 
-function getProyecto(id) {
-  return db.prepare('SELECT * FROM proyecto WHERE id = ?').get(Number(id));
+async function getProyecto(id) {
+  const { rows } = await query('SELECT * FROM proyecto WHERE id = $1', [Number(id)]);
+  return rows[0];
 }
 
-function baseDelPadre(item) {
+async function baseDelPadre(item) {
   if (item.parent_id) {
-    const padre = getItem(item.parent_id);
+    const padre = await getItem(item.parent_id);
     return padre ? padre.monto_base : 0;
   }
-  const proyecto = getProyecto(item.proyecto_id);
+  const proyecto = await getProyecto(item.proyecto_id);
   return proyecto ? proyecto.monto_presupuesto_original : 0;
 }
 
@@ -63,77 +66,82 @@ function baseDelPadre(item) {
 // presupuesto del proyecto si es raíz) — salvo que se haya sobrescrito a
 // mano (monto_base_manual). Cambiar un ítem obliga a recalcular en cascada
 // a todos sus descendientes no-manuales.
-function recomputeSubtree(itemId) {
-  const item = getItem(itemId);
+async function recomputeSubtree(itemId) {
+  const item = await getItem(itemId);
   if (!item) return;
   if (!item.monto_base_manual) {
-    const base = baseDelPadre(item);
+    const base = await baseDelPadre(item);
     const nuevoMonto = base * (item.porcentaje / 100);
-    db.prepare('UPDATE item SET monto_base = ? WHERE id = ?').run(nuevoMonto, itemId);
+    await query('UPDATE item SET monto_base = $1 WHERE id = $2', [nuevoMonto, itemId]);
   }
-  const hijos = db.prepare('SELECT id FROM item WHERE parent_id = ? AND activo = 1').all(itemId);
-  for (const hijo of hijos) recomputeSubtree(hijo.id);
+  const { rows: hijos } = await query('SELECT id FROM item WHERE parent_id = $1 AND activo = 1', [itemId]);
+  for (const hijo of hijos) await recomputeSubtree(hijo.id);
 }
 
-function recomputeProyecto(proyectoId) {
-  const raices = db.prepare(
-    'SELECT id FROM item WHERE proyecto_id = ? AND parent_id IS NULL AND activo = 1'
-  ).all(proyectoId);
-  for (const r of raices) recomputeSubtree(r.id);
+async function recomputeProyecto(proyectoId) {
+  const { rows: raices } = await query(
+    'SELECT id FROM item WHERE proyecto_id = $1 AND parent_id IS NULL AND activo = 1',
+    [proyectoId]
+  );
+  for (const r of raices) await recomputeSubtree(r.id);
 }
 
 // Los sub-ítems creados a mano no llevan % propio: siempre se reparten el
 // 100% del padre en partes iguales entre todos los hermanos. Se recalcula
 // cada vez que se agrega o se borra uno.
-function repartirHermanosPorIgual(parentId) {
-  const hermanos = db.prepare('SELECT id FROM item WHERE parent_id = ? AND activo = 1 ORDER BY orden, id').all(parentId);
+async function repartirHermanosPorIgual(parentId) {
+  const { rows: hermanos } = await query(
+    'SELECT id FROM item WHERE parent_id = $1 AND activo = 1 ORDER BY orden, id',
+    [parentId]
+  );
   if (!hermanos.length) return;
   const porcentajeIgual = 100 / hermanos.length;
   for (const h of hermanos) {
-    db.prepare('UPDATE item SET porcentaje = ? WHERE id = ?').run(porcentajeIgual, h.id);
+    await query('UPDATE item SET porcentaje = $1 WHERE id = $2', [porcentajeIgual, h.id]);
   }
 }
 
-function crearItem({ proyecto_id, parent_id, nombre, orden }) {
+async function crearItem({ proyecto_id, parent_id, nombre, orden }) {
   if (!parent_id) throw new Error('Los ítems del presupuesto son fijos: solo se pueden agregar sub-ítems dentro de un ítem que lo permita.');
-  const padre = getItem(parent_id);
+  const padre = await getItem(parent_id);
   if (!padre || !padre.permite_subitems) {
     throw new Error('No se pueden agregar sub-ítems dentro de este ítem.');
   }
-  const resultado = db.prepare(`
+  const { rows } = await query(`
     INSERT INTO item (proyecto_id, parent_id, nombre, orden, porcentaje, monto_base, monto_base_manual, activo, fijo, permite_subitems)
-    VALUES (?, ?, ?, ?, 0, 0, 0, 1, 0, 0)
-  `).run(proyecto_id, parent_id, nombre, orden || 0);
-  const id = resultado.lastInsertRowid;
-  repartirHermanosPorIgual(parent_id);
-  recomputeSubtree(parent_id);
+    VALUES ($1, $2, $3, $4, 0, 0, 0, 1, 0, 0)
+    RETURNING id
+  `, [proyecto_id, parent_id, nombre, orden || 0]);
+  const id = rows[0].id;
+  await repartirHermanosPorIgual(parent_id);
+  await recomputeSubtree(parent_id);
   return getItem(id);
 }
 
 // Un sub-ítem solo tiene nombre editable: su % (y por lo tanto su monto) es
 // siempre automático, y su avance se corrige editando las certificaciones,
 // no el ítem.
-function actualizarItem(id, cambios) {
-  const actual = getItem(id);
+async function actualizarItem(id, cambios) {
+  const actual = await getItem(id);
   if (!actual) throw new Error('Ítem no encontrado.');
   if (actual.fijo) throw new Error('Los ítems fijos del presupuesto no se pueden editar.');
   const nombre = cambios.nombre ?? actual.nombre;
-  db.prepare('UPDATE item SET nombre = ? WHERE id = ?').run(nombre, id);
+  await query('UPDATE item SET nombre = $1 WHERE id = $2', [nombre, id]);
   return getItem(id);
 }
 
-function borrarItem(id) {
-  const item = getItem(id);
+async function borrarItem(id) {
+  const item = await getItem(id);
   if (!item) return;
   if (item.fijo) throw new Error('Los ítems fijos del presupuesto no se pueden eliminar.');
-  const hijos = db.prepare('SELECT id FROM item WHERE parent_id = ?').all(id);
-  for (const hijo of hijos) borrarItem(hijo.id);
-  db.prepare('DELETE FROM certificacion_detalle WHERE item_id = ?').run(id);
-  db.prepare('DELETE FROM actualizacion_uocra_efecto WHERE item_id = ?').run(id);
-  db.prepare('DELETE FROM item WHERE id = ?').run(id);
+  const { rows: hijos } = await query('SELECT id FROM item WHERE parent_id = $1', [id]);
+  for (const hijo of hijos) await borrarItem(hijo.id);
+  await query('DELETE FROM certificacion_detalle WHERE item_id = $1', [id]);
+  await query('DELETE FROM actualizacion_uocra_efecto WHERE item_id = $1', [id]);
+  await query('DELETE FROM item WHERE id = $1', [id]);
   if (item.parent_id) {
-    repartirHermanosPorIgual(item.parent_id);
-    recomputeSubtree(item.parent_id);
+    await repartirHermanosPorIgual(item.parent_id);
+    await recomputeSubtree(item.parent_id);
   }
 }
 
