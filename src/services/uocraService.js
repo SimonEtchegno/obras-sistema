@@ -1,4 +1,4 @@
-const db = require('../db');
+const { query, withTransaction } = require('../db');
 const { listarHojas } = require('./rollups');
 
 const TIPOS_VALIDOS = ['uocra', 'indice_construccion'];
@@ -40,8 +40,8 @@ function porcentajeEfectivo(objetivo, { modo, porcentaje, monto }) {
   return valor;
 }
 
-function previsualizar(proyectoId, datos) {
-  const objetivo = elegirItemsObjetivo(proyectoId);
+async function previsualizar(proyectoId, datos) {
+  const objetivo = await elegirItemsObjetivo(proyectoId);
   const pct = porcentajeEfectivo(objetivo, datos || {});
   return objetivo.map((item) => {
     const ajuste = item.saldo_pendiente * (pct / 100);
@@ -55,34 +55,34 @@ function previsualizar(proyectoId, datos) {
   });
 }
 
-function crearActualizacion(proyectoId, datos) {
+async function crearActualizacion(proyectoId, datos) {
   const { fecha, tipo, motivo } = datos;
   validarTipo(tipo);
-  const objetivo = elegirItemsObjetivo(proyectoId);
+  const objetivo = await elegirItemsObjetivo(proyectoId);
   // Se guarda siempre el % (el ingresado, o el que equivale al monto cargado):
   // es lo que necesita el cálculo, y el monto total queda igual registrado como
   // la suma de los efectos.
   const porcentaje = porcentajeEfectivo(objetivo, datos);
 
-  db.exec('BEGIN');
-  try {
+  return withTransaction(async (client) => {
     const fechaCreacion = new Date().toISOString();
-    const resultado = db.prepare(`
+    const { rows } = await client.query(`
       INSERT INTO actualizacion_uocra (proyecto_id, fecha, tipo, porcentaje, alcance, motivo, fecha_creacion)
-      VALUES (?, ?, ?, ?, 'todos', ?, ?)
-    `).run(proyectoId, fecha, tipo, porcentaje, motivo ?? null, fechaCreacion);
-    const actualizacionId = resultado.lastInsertRowid;
+      VALUES ($1, $2, $3, $4, 'todos', $5, $6)
+      RETURNING id
+    `, [proyectoId, fecha, tipo, porcentaje, motivo ?? null, fechaCreacion]);
+    const actualizacionId = rows[0].id;
 
     const efectos = [];
     for (const item of objetivo) {
       const saldoAntes = item.saldo_pendiente;
       const ajuste = saldoAntes * (porcentaje / 100);
       const vigenteDespues = item.monto_vigente + ajuste;
-      db.prepare(`
+      await client.query(`
         INSERT INTO actualizacion_uocra_efecto
           (actualizacion_id, item_id, saldo_pendiente_antes, monto_ajuste, monto_vigente_despues)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(actualizacionId, item.id, saldoAntes, ajuste, vigenteDespues);
+        VALUES ($1, $2, $3, $4, $5)
+      `, [actualizacionId, item.id, saldoAntes, ajuste, vigenteDespues]);
       efectos.push({
         item_id: item.id,
         item_nombre: item.nombre,
@@ -92,54 +92,49 @@ function crearActualizacion(proyectoId, datos) {
       });
     }
 
-    db.exec('COMMIT');
     return { actualizacionId, efectos };
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
+  });
 }
 
-function listarActualizaciones(proyectoId) {
-  return db.prepare(`
+async function listarActualizaciones(proyectoId) {
+  const { rows } = await query(`
     SELECT a.*,
       (SELECT COALESCE(SUM(e.monto_ajuste), 0) FROM actualizacion_uocra_efecto e WHERE e.actualizacion_id = a.id) as total_ajuste
     FROM actualizacion_uocra a
-    WHERE a.proyecto_id = ?
+    WHERE a.proyecto_id = $1
     ORDER BY a.fecha DESC, a.id DESC
-  `).all(proyectoId);
+  `, [proyectoId]);
+  return rows;
 }
 
-function obtenerActualizacion(id) {
-  const act = db.prepare('SELECT * FROM actualizacion_uocra WHERE id = ?').get(id);
+async function obtenerActualizacion(id) {
+  const { rows: actRows } = await query('SELECT * FROM actualizacion_uocra WHERE id = $1', [id]);
+  const act = actRows[0];
   if (!act) return null;
-  const efectos = db.prepare(`
+  const { rows: efectos } = await query(`
     SELECT e.*, i.nombre as item_nombre
     FROM actualizacion_uocra_efecto e
     JOIN item i ON i.id = e.item_id
-    WHERE e.actualizacion_id = ?
+    WHERE e.actualizacion_id = $1
     ORDER BY e.id
-  `).all(id);
+  `, [id]);
   return { ...act, efectos };
 }
 
-function esLaMasReciente(proyectoId, actualizacionId) {
-  const ultima = db.prepare(
-    'SELECT id FROM actualizacion_uocra WHERE proyecto_id = ? ORDER BY fecha_creacion DESC, id DESC LIMIT 1'
-  ).get(proyectoId);
+async function esLaMasReciente(proyectoId, actualizacionId) {
+  const { rows } = await query(
+    'SELECT id FROM actualizacion_uocra WHERE proyecto_id = $1 ORDER BY fecha_creacion DESC, id DESC LIMIT 1',
+    [proyectoId]
+  );
+  const ultima = rows[0];
   return !!ultima && ultima.id === Number(actualizacionId);
 }
 
-function eliminarActualizacion(id) {
-  db.exec('BEGIN');
-  try {
-    db.prepare('DELETE FROM actualizacion_uocra_efecto WHERE actualizacion_id = ?').run(id);
-    db.prepare('DELETE FROM actualizacion_uocra WHERE id = ?').run(id);
-    db.exec('COMMIT');
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
+async function eliminarActualizacion(id) {
+  await withTransaction(async (client) => {
+    await client.query('DELETE FROM actualizacion_uocra_efecto WHERE actualizacion_id = $1', [id]);
+    await client.query('DELETE FROM actualizacion_uocra WHERE id = $1', [id]);
+  });
 }
 
 module.exports = {

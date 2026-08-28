@@ -1,24 +1,25 @@
 const express = require('express');
 const itemsTree = require('../services/itemsTree');
+const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
 
-router.put('/:id', (req, res) => {
+router.put('/:id', asyncHandler(async (req, res) => {
   try {
-    const item = itemsTree.actualizarItem(req.params.id, req.body);
+    const item = await itemsTree.actualizarItem(req.params.id, req.body);
     res.json(item);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', asyncHandler(async (req, res) => {
   try {
-    itemsTree.borrarItem(req.params.id);
+    await itemsTree.borrarItem(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
 module.exports = router;

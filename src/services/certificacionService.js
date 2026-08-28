@@ -1,20 +1,20 @@
-const db = require('../db');
+const { query, withTransaction } = require('../db');
 const { listarHojas } = require('./rollups');
 
 // Solo se puede certificar sobre ítems "hoja" (sin subdivisiones), para no
 // contar dos veces el mismo presupuesto entre un ítem padre y sus hijos.
-function crearCertificacion(proyectoId, datos) {
-  const hojas = new Map(listarHojas(proyectoId).map((h) => [h.id, h]));
+async function crearCertificacion(proyectoId, datos) {
+  const hojas = new Map((await listarHojas(proyectoId)).map((h) => [h.id, h]));
   const avisos = [];
 
-  db.exec('BEGIN');
-  try {
+  const certificacionId = await withTransaction(async (client) => {
     const fechaCreacion = new Date().toISOString();
-    const resultado = db.prepare(`
+    const { rows } = await client.query(`
       INSERT INTO certificacion (proyecto_id, numero, fecha, descripcion, fecha_creacion)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(proyectoId, datos.numero ?? null, datos.fecha, datos.descripcion ?? null, fechaCreacion);
-    const certificacionId = resultado.lastInsertRowid;
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
+    `, [proyectoId, datos.numero ?? null, datos.fecha, datos.descripcion ?? null, fechaCreacion]);
+    const certId = rows[0].id;
 
     for (const d of datos.detalles || []) {
       const item = hojas.get(Number(d.item_id));
@@ -33,11 +33,11 @@ function crearCertificacion(proyectoId, datos) {
       }
       if (monto == null) monto = 0;
 
-      db.prepare(`
+      await client.query(`
         INSERT INTO certificacion_detalle
           (certificacion_id, item_id, monto_vigente_snapshot, porcentaje_certificado, monto_certificado, observaciones)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(certificacionId, item.id, vigenteSnapshot, porcentaje ?? null, monto, d.observaciones ?? null);
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [certId, item.id, vigenteSnapshot, porcentaje ?? null, monto, d.observaciones ?? null]);
 
       const nuevoAcumulado = (item.certificado_acumulado || 0) + monto;
       if (vigenteSnapshot > 0 && nuevoAcumulado > vigenteSnapshot + 0.01) {
@@ -47,59 +47,56 @@ function crearCertificacion(proyectoId, datos) {
       }
     }
 
-    db.exec('COMMIT');
-    return { certificacionId, avisos };
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
+    return certId;
+  });
+
+  return { certificacionId, avisos };
 }
 
 // Historial "plano" para la solapa Certificaciones: una fila por ítem
 // certificado (no por certificación), con la fecha y el título de la
 // certificación a la que pertenece.
-function listarCertificacionesDetalladas(proyectoId) {
-  return db.prepare(`
+async function listarCertificacionesDetalladas(proyectoId) {
+  const { rows } = await query(`
     SELECT d.id as detalle_id, c.id as certificacion_id, c.fecha, c.descripcion as titulo,
            i.id as item_id, i.nombre as item_nombre, d.monto_certificado
     FROM certificacion_detalle d
     JOIN certificacion c ON c.id = d.certificacion_id
     JOIN item i ON i.id = d.item_id
-    WHERE c.proyecto_id = ?
+    WHERE c.proyecto_id = $1
     ORDER BY c.fecha DESC, c.id DESC, d.id DESC
-  `).all(proyectoId);
+  `, [proyectoId]);
+  return rows;
 }
 
 // Cada certificación tiene un solo detalle (se carga de a un ítem por vez
 // desde su propia tarjeta), así que editar la certificación es editar ese
 // único detalle.
-function editarCertificacion(id, cambios) {
-  const cert = db.prepare('SELECT * FROM certificacion WHERE id = ?').get(id);
+async function editarCertificacion(id, cambios) {
+  const { rows: certRows } = await query('SELECT * FROM certificacion WHERE id = $1', [id]);
+  const cert = certRows[0];
   if (!cert) throw new Error('Certificación no encontrada.');
-  const detalle = db.prepare('SELECT * FROM certificacion_detalle WHERE certificacion_id = ?').get(id);
+  const { rows: detRows } = await query('SELECT * FROM certificacion_detalle WHERE certificacion_id = $1', [id]);
+  const detalle = detRows[0];
 
   const fecha = cambios.fecha ?? cert.fecha;
   const titulo = cambios.titulo !== undefined ? cambios.titulo : cert.descripcion;
-  db.prepare('UPDATE certificacion SET fecha = ?, descripcion = ? WHERE id = ?').run(fecha, titulo ?? null, id);
+  await query('UPDATE certificacion SET fecha = $1, descripcion = $2 WHERE id = $3', [fecha, titulo ?? null, id]);
 
   if (detalle && cambios.monto !== undefined && cambios.monto !== null) {
     const monto = Number(cambios.monto);
     const porcentaje = detalle.monto_vigente_snapshot > 0 ? (monto / detalle.monto_vigente_snapshot) * 100 : null;
-    db.prepare('UPDATE certificacion_detalle SET monto_certificado = ?, porcentaje_certificado = ? WHERE id = ?')
-      .run(monto, porcentaje, detalle.id);
+    await query('UPDATE certificacion_detalle SET monto_certificado = $1, porcentaje_certificado = $2 WHERE id = $3', [
+      monto, porcentaje, detalle.id,
+    ]);
   }
 }
 
-function eliminarCertificacion(id) {
-  db.exec('BEGIN');
-  try {
-    db.prepare('DELETE FROM certificacion_detalle WHERE certificacion_id = ?').run(id);
-    db.prepare('DELETE FROM certificacion WHERE id = ?').run(id);
-    db.exec('COMMIT');
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
+async function eliminarCertificacion(id) {
+  await withTransaction(async (client) => {
+    await client.query('DELETE FROM certificacion_detalle WHERE certificacion_id = $1', [id]);
+    await client.query('DELETE FROM certificacion WHERE id = $1', [id]);
+  });
 }
 
 module.exports = {
