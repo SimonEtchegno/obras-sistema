@@ -3,14 +3,14 @@ import api from '../lib/api.js';
 import { fmtFecha, fmtMoney } from '../lib/format.js';
 import useCargar from '../hooks/useCargar.js';
 import useTitulo from '../hooks/useTitulo.js';
-import { Container, Crumb, H1, Section, SectionTitle, Subtitle, Toolbar, TopBar } from '../components/Layout.jsx';
+import { Container, Crumb, Section, SectionTitle, Subtitle, Toolbar, TopBar } from '../components/Layout.jsx';
 import ProyectoTabs from '../components/ProyectoTabs.jsx';
 import MenuExportar from '../components/MenuExportar.jsx';
 import PieComposicion from '../components/PieComposicion.jsx';
 import ArbolItems from '../components/ArbolItems.jsx';
 import Extras from '../components/Extras.jsx';
 import { IconoCheck, IconoDocumento, IconoReloj, IconoTendencia } from '../components/Icons.jsx';
-import { Button, Card, Empty, ErrorAlert, KpiRow, KpiTile, Meter } from '../components/ui/index.js';
+import { Button, Card, ErrorAlert, KpiRow, KpiTile, LoadingOverlay, Meter } from '../components/ui/index.js';
 
 export default function ProyectoPage() {
   const { id } = useParams();
@@ -34,12 +34,12 @@ export default function ProyectoPage() {
   if (!proyecto) {
     return (
       <>
-        <TopBar titulo="…">
+        <TopBar>
           <Crumb to="/">Proyectos</Crumb>
         </TopBar>
-        <Container>
+        <Container className="relative min-h-50">
           <ErrorAlert error={error} />
-          {cargando && <Empty>Cargando…</Empty>}
+          <LoadingOverlay activo={cargando} />
         </Container>
       </>
     );
@@ -49,20 +49,23 @@ export default function ProyectoPage() {
 
   return (
     <>
-      <TopBar titulo={proyecto.nombre}>
+      <TopBar>
         <Crumb to="/">Proyectos</Crumb>
       </TopBar>
       <ProyectoTabs proyectoId={id} />
 
-      <Container>
+      <Container className="relative">
+        <LoadingOverlay activo={cargando} />
+
+        <h1 className="mb-6 text-center text-[38px] font-bold tracking-[-0.02em] uppercase max-sm:text-[28px]">
+          {proyecto.nombre}
+        </h1>
+
         <Toolbar>
-          <div>
-            <H1>{proyecto.nombre}</H1>
-            <Subtitle className="mb-0">
-              Presupuesto original: {fmtMoney(proyecto.monto_presupuesto_original)} al{' '}
-              {fmtFecha(proyecto.fecha_presupuesto_original)}
-            </Subtitle>
-          </div>
+          <Subtitle className="mb-0">
+            Presupuesto original: {fmtMoney(proyecto.monto_presupuesto_original)} al{' '}
+            {fmtFecha(proyecto.fecha_presupuesto_original)}
+          </Subtitle>
           <div className="flex flex-wrap gap-2">
             <MenuExportar proyectoId={id} proyecto={proyecto} />
             <Button onClick={() => navigate(`/proyecto/${id}/uocra/nueva`)}>+ Actualización</Button>

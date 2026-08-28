@@ -8,6 +8,7 @@ import { Container, Crumb, H1, Section, SectionTitle, Subtitle, TopBar } from '.
 import {
   Button, Card, Empty, ErrorAlert, Field, FieldRow, InputMonto, Label, Table, TBody, Td, Th, THead, Tr,
 } from '../components/ui/index.js';
+import { confirmar } from '../components/Dialogos.jsx';
 
 const SIN_VALOR = {
   porcentaje: 'Completá el % de aumento para ver el efecto calculado.',
@@ -80,12 +81,11 @@ export default function UocraNuevaPage() {
     }
     const resumenAumento =
       modo === 'monto' ? `${fmtMoney(valor)} (${fmtPct(pctEfectivo)})` : `${valor}% (${fmtMoney(totalAjuste)})`;
-    if (
-      !confirm(
-        `¿Confirmás aplicar un aumento de ${resumenAumento} por ${fmtTipoActualizacion(tipo)} a todo el proyecto? Esta actualización queda registrada en el historial.`
-      )
-    )
-      return;
+    const ok = await confirmar(
+      `¿Confirmás aplicar un aumento de ${resumenAumento} por ${fmtTipoActualizacion(tipo)} a todo el proyecto? Esta actualización queda registrada en el historial.`,
+      { textoConfirmar: 'Confirmar', variante: 'primary' }
+    );
+    if (!ok) return;
 
     setGuardando(true);
     try {
@@ -264,7 +264,7 @@ export default function UocraNuevaPage() {
         <ErrorAlert error={error} />
 
         <div className="flex flex-wrap gap-2">
-          <Button variante="primary" onClick={guardar} disabled={guardando}>
+          <Button variante="primary" onClick={guardar} cargando={guardando}>
             Confirmar y guardar actualización
           </Button>
           <Button onClick={() => navigate(`/proyecto/${id}/uocra`)}>Cancelar</Button>

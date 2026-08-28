@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import api from '../lib/api.js';
 import { exportarExcel, exportarPDF } from '../lib/exportar.js';
 import { Button } from './ui/index.js';
+import { notificar } from './Dialogos.jsx';
 
 function IconoChevron() {
   return (
@@ -43,7 +44,7 @@ export function MenuExportar({ proyectoId, proyecto }) {
       const { arbol, certificaciones, actualizaciones } = await obtenerDatosExport(proyectoId);
       fn(proyecto, arbol, certificaciones, actualizaciones);
     } catch (e) {
-      alert('Error al exportar: ' + e.message);
+      notificar('Error al exportar: ' + e.message);
     } finally {
       setCargando(false);
     }
@@ -51,7 +52,7 @@ export function MenuExportar({ proyectoId, proyecto }) {
 
   return (
     <div ref={ref} className="relative">
-      <Button onClick={() => setAbierto((o) => !o)} disabled={cargando}>
+      <Button onClick={() => setAbierto((o) => !o)} cargando={cargando}>
         {cargando ? 'Exportando…' : 'Exportar'}
         {!cargando && <IconoChevron />}
       </Button>

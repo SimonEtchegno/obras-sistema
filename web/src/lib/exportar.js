@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { fmtFecha, fmtMoney, fmtPct, fmtTipoActualizacion } from './format.js';
+import { notificar } from '../components/Dialogos.jsx';
 
 function flattenNodos(nodos, nivel = 0) {
   const filas = [];
@@ -232,7 +233,7 @@ export function exportarPDF(proyecto, arbol, certificacionesFlat, actualizacione
 
   const win = window.open('', '_blank');
   if (!win) {
-    alert('El navegador bloqueó la ventana emergente. Permitila para exportar a PDF.');
+    notificar('El navegador bloqueó la ventana emergente. Permitila para exportar a PDF.');
     return;
   }
   win.document.write(html);
