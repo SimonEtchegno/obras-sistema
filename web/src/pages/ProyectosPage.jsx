@@ -6,7 +6,7 @@ import useCargar from '../hooks/useCargar.js';
 import useTitulo from '../hooks/useTitulo.js';
 import { Container, H1, Subtitle, Toolbar, TopBar } from '../components/Layout.jsx';
 import {
-  Button, Card, Empty, ErrorAlert, Field, FieldRow, InputMonto, Meter, Table, TBody, Td, Th, THead, Tr,
+  Button, Card, Empty, ErrorAlert, Field, FieldRow, InputMonto, LoadingOverlay, Meter, Table, TBody, Td, Th, THead, Tr,
 } from '../components/ui/index.js';
 
 function FormNuevoProyecto({ onCancelar, onCreado }) {
@@ -80,7 +80,7 @@ function FormNuevoProyecto({ onCancelar, onCreado }) {
       <ErrorAlert error={error} />
 
       <div className="flex flex-wrap gap-2">
-        <Button variante="primary" onClick={crear} disabled={guardando}>
+        <Button variante="primary" onClick={crear} cargando={guardando}>
           Crear proyecto
         </Button>
         <Button onClick={onCancelar}>Cancelar</Button>
@@ -92,7 +92,7 @@ function FormNuevoProyecto({ onCancelar, onCreado }) {
 export default function ProyectosPage() {
   useTitulo('Sistema de Obras');
   const navigate = useNavigate();
-  const { datos: proyectos, error } = useCargar(() => api.get('/proyectos'), []);
+  const { datos: proyectos, error, cargando } = useCargar(() => api.get('/proyectos'), []);
   const [formAbierto, setFormAbierto] = useState(false);
 
   const lista = proyectos || [];
@@ -120,7 +120,8 @@ export default function ProyectosPage() {
 
         <ErrorAlert error={error} />
 
-        <Card>
+        <Card className="relative">
+          <LoadingOverlay activo={cargando} />
           <Table cards>
             <THead>
               <tr>

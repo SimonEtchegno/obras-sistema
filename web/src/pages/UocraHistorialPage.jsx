@@ -7,7 +7,8 @@ import useTitulo from '../hooks/useTitulo.js';
 import { Container, Crumb, H1, Toolbar, TopBar } from '../components/Layout.jsx';
 import ProyectoTabs from '../components/ProyectoTabs.jsx';
 import MenuExportar from '../components/MenuExportar.jsx';
-import { Button, Card, Empty, ErrorAlert, Table, TBody, Td, Th, THead, Tr } from '../components/ui/index.js';
+import { Button, Card, Empty, ErrorAlert, LoadingOverlay, Table, TBody, Td, Th, THead, Tr } from '../components/ui/index.js';
+import { confirmar, notificar } from '../components/Dialogos.jsx';
 
 function DetalleActualizacion({ efectos }) {
   return (
@@ -46,12 +47,17 @@ function FilaActualizacion({ actualizacion, recargar }) {
   }
 
   async function borrar() {
-    if (!confirm(`¿Borrar esta actualización del ${fmtFecha(actualizacion.fecha)}? Esta acción no se puede deshacer.`)) {
-      return;
+    const ok = await confirmar(
+      `¿Borrar esta actualización del ${fmtFecha(actualizacion.fecha)}? Esta acción no se puede deshacer.`
+    );
+    if (!ok) return;
+    try {
+      const r = await api.del(`/actualizaciones-uocra/${actualizacion.id}`);
+      if (r.advertencia) notificar(r.advertencia, 'warning');
+      recargar();
+    } catch (err) {
+      notificar('No se pudo borrar: ' + err.message);
     }
-    const r = await api.del(`/actualizaciones-uocra/${actualizacion.id}`);
-    if (r.advertencia) alert(r.advertencia);
-    recargar();
   }
 
   return (
@@ -92,7 +98,7 @@ export default function UocraHistorialPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const { datos, error, recargar } = useCargar(
+  const { datos, error, cargando, recargar } = useCargar(
     () =>
       Promise.all([api.get(`/proyectos/${id}`), api.get(`/proyectos/${id}/actualizaciones-uocra`)]).then(
         ([proyecto, lista]) => ({ proyecto, lista })
@@ -125,7 +131,8 @@ export default function UocraHistorialPage() {
 
         <ErrorAlert error={error} />
 
-        <Card>
+        <Card className="relative">
+          <LoadingOverlay activo={cargando} />
           <Table cards>
             <THead>
               <tr>

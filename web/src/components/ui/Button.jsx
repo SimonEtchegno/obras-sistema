@@ -1,4 +1,5 @@
 import cx from '../../lib/cx.js';
+import { Spinner } from './LoadingOverlay.jsx';
 
 const VARIANTES = {
   normal: 'border-line-strong bg-surface text-ink hover:bg-surface-3',
@@ -19,10 +20,22 @@ function espaciado(variante, chico) {
   return variante === 'primary' ? 'px-[18px] py-[9px]' : 'px-4 py-[9px]';
 }
 
-export function Button({ variante = 'normal', chico = false, className, type = 'button', ...props }) {
+// `cargando` deshabilita el botón y le pone el Spinner adelante del texto,
+// para no dejar los guardados sin ningún indicio de que están en curso.
+export function Button({
+  variante = 'normal',
+  chico = false,
+  cargando = false,
+  disabled,
+  className,
+  type = 'button',
+  children,
+  ...props
+}) {
   return (
     <button
       type={type}
+      disabled={disabled || cargando}
       className={cx(
         'inline-flex cursor-pointer items-center justify-center gap-1.5 border font-medium transition-[background-color,border-color,filter,transform] duration-150',
         'active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-[38px]',
@@ -33,7 +46,10 @@ export function Button({ variante = 'normal', chico = false, className, type = '
         className
       )}
       {...props}
-    />
+    >
+      {cargando && <Spinner className={chico ? 'h-3 w-3' : 'h-3.5 w-3.5'} />}
+      {children}
+    </button>
   );
 }
 

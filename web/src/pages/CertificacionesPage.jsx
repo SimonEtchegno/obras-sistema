@@ -7,18 +7,21 @@ import useTitulo from '../hooks/useTitulo.js';
 import { Container, Crumb, H1, Subtitle, TopBar } from '../components/Layout.jsx';
 import ProyectoTabs from '../components/ProyectoTabs.jsx';
 import {
-  Alert, Button, Card, Empty, ErrorAlert, Field, FieldRow, InputMonto, Table, TBody, Td, Th, THead, Tr,
+  Alert, Button, Card, Empty, ErrorAlert, Field, FieldRow, InputMonto, LoadingOverlay, Table, TBody, Td, Th, THead, Tr,
 } from '../components/ui/index.js';
+import { confirmar, notificar } from '../components/Dialogos.jsx';
 
 function FilaEdicion({ fila, onCancelar, onGuardado }) {
   const [fecha, setFecha] = useState(fila.fecha);
   const [titulo, setTitulo] = useState(fila.titulo || '');
   const [monto, setMonto] = useState(String(Math.round(fila.monto_certificado)));
+  const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
   async function guardar() {
+    setError(null);
     if (!fecha || !monto) {
-      alert('Completá fecha y monto.');
+      setError(new Error('Completá fecha y monto.'));
       return;
     }
     setGuardando(true);
@@ -30,7 +33,7 @@ function FilaEdicion({ fila, onCancelar, onGuardado }) {
       });
       onGuardado();
     } catch (err) {
-      alert('No se pudo guardar: ' + err.message);
+      setError(err);
       setGuardando(false);
     }
   }
@@ -57,8 +60,9 @@ function FilaEdicion({ fila, onCancelar, onGuardado }) {
             {(id) => <InputMonto id={id} className="w-full" value={monto} onChange={setMonto} />}
           </Field>
         </FieldRow>
+        <ErrorAlert error={error} />
         <div className="flex flex-wrap gap-2">
-          <Button chico variante="primary" onClick={guardar} disabled={guardando}>
+          <Button chico variante="primary" onClick={guardar} cargando={guardando}>
             Guardar
           </Button>
           <Button chico onClick={onCancelar} disabled={guardando}>
@@ -74,9 +78,14 @@ function FilaHistorial({ fila, recargar }) {
   const [editando, setEditando] = useState(false);
 
   async function borrar() {
-    if (!confirm(`¿Borrar esta certificación de "${fila.item_nombre}"? Esta acción no se puede deshacer.`)) return;
-    await api.del(`/certificaciones/${fila.certificacion_id}`);
-    recargar();
+    const ok = await confirmar(`¿Borrar esta certificación de "${fila.item_nombre}"? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+    try {
+      await api.del(`/certificaciones/${fila.certificacion_id}`);
+      recargar();
+    } catch (err) {
+      notificar('No se pudo borrar: ' + err.message);
+    }
   }
 
   return (
@@ -118,7 +127,7 @@ export default function CertificacionesPage() {
   // Los avisos de sobre-certificación llegan desde el botón "Certificar" del ítem.
   const avisos = useLocation().state?.avisos ?? [];
 
-  const { datos, error, recargar } = useCargar(
+  const { datos, error, cargando, recargar } = useCargar(
     () =>
       Promise.all([api.get(`/proyectos/${id}`), api.get(`/proyectos/${id}/certificaciones`)]).then(
         ([proyecto, lista]) => ({ proyecto, lista })
@@ -152,7 +161,8 @@ export default function CertificacionesPage() {
           </Alert>
         ))}
 
-        <Card>
+        <Card className="relative">
+          <LoadingOverlay activo={cargando} />
           <Table cards>
             <THead>
               <tr>

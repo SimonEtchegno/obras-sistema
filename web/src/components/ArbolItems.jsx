@@ -4,6 +4,7 @@ import cx from '../lib/cx.js';
 import { fmtFecha, fmtMoney, fmtPct, hoyIso } from '../lib/format.js';
 import { estiloRamaItem, estiloTarjetaItem, huesDeRaices } from '../lib/colores.js';
 import { Badge, Button, Card, Empty, Input, InputMonto, Label, Meter } from './ui/index.js';
+import { confirmar, notificar } from './Dialogos.jsx';
 
 function sumaPorcentajeHijos(nodo) {
   return nodo.hijos.reduce((acc, h) => acc + (Number(h.porcentaje) || 0), 0);
@@ -90,7 +91,7 @@ export function FormItem({ etiquetaNombre, onAgregar }) {
     try {
       await onAgregar({ nombre: nombre.trim() });
     } catch (err) {
-      alert('No se pudo agregar: ' + err.message);
+      notificar('No se pudo agregar: ' + err.message);
     } finally {
       setGuardando(false);
     }
@@ -109,7 +110,7 @@ export function FormItem({ etiquetaNombre, onAgregar }) {
           onKeyDown={(e) => e.key === 'Enter' && agregar()}
         />
       </div>
-      <Button variante="primary" onClick={agregar} disabled={guardando}>
+      <Button variante="primary" onClick={agregar} cargando={guardando}>
         Agregar
       </Button>
     </div>
@@ -125,18 +126,18 @@ function FormCertificar({ inicial, textoBoton = 'Certificar', onCertificar, onCa
 
   async function certificar() {
     if (!fecha) {
-      alert('Falta la fecha.');
+      notificar('Falta la fecha.');
       return;
     }
     if (!monto) {
-      alert('Falta el monto certificado.');
+      notificar('Falta el monto certificado.');
       return;
     }
     setGuardando(true);
     try {
       await onCertificar({ fecha, titulo: titulo.trim(), monto: parseFloat(monto) || 0 });
     } catch (err) {
-      alert('No se pudo guardar: ' + err.message);
+      notificar('No se pudo guardar: ' + err.message);
     } finally {
       setGuardando(false);
     }
@@ -170,7 +171,7 @@ function FormCertificar({ inicial, textoBoton = 'Certificar', onCertificar, onCa
         <Label htmlFor={`${idBase}-monto`}>Monto certificado</Label>
         <InputMonto id={`${idBase}-monto`} className="w-full" value={monto} onChange={setMonto} />
       </div>
-      <Button variante="primary" onClick={certificar} disabled={guardando}>
+      <Button variante="primary" onClick={certificar} cargando={guardando}>
         {textoBoton}
       </Button>
       {onCancelar && (
@@ -252,7 +253,7 @@ function TarjetaItem({ item, proyectoId, certificaciones, recargar, hue, esRaiz 
 
   async function guardar() {
     if (!nombre.trim()) {
-      alert('El ítem necesita un nombre.');
+      notificar('El ítem necesita un nombre.');
       return;
     }
     try {
@@ -260,7 +261,7 @@ function TarjetaItem({ item, proyectoId, certificaciones, recargar, hue, esRaiz 
       setEditando(false);
       recargar();
     } catch (err) {
-      alert('No se pudo guardar: ' + err.message);
+      notificar('No se pudo guardar: ' + err.message);
     }
   }
 
@@ -270,18 +271,21 @@ function TarjetaItem({ item, proyectoId, certificaciones, recargar, hue, esRaiz 
       descripcion: titulo,
       detalles: [{ item_id: item.id, monto_certificado: monto }],
     });
-    if (resultado?.avisos?.length) alert(resultado.avisos.join('\n'));
+    if (resultado?.avisos?.length) notificar(resultado.avisos.join('\n'), 'warning');
     setCertificarAbierto(false);
     recargar();
   }
 
   async function borrar() {
-    if (!confirm(`¿Eliminar "${item.nombre}"? Esto borra también su historial de certificaciones y actualizaciones. No se puede deshacer.`)) return;
+    const ok = await confirmar(
+      `¿Eliminar "${item.nombre}"? Esto borra también su historial de certificaciones y actualizaciones. No se puede deshacer.`
+    );
+    if (!ok) return;
     try {
       await api.del(`/items/${item.id}`);
       recargar();
     } catch (err) {
-      alert('No se pudo eliminar: ' + err.message);
+      notificar('No se pudo eliminar: ' + err.message);
     }
   }
 
