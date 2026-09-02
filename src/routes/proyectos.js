@@ -1,5 +1,5 @@
 const express = require('express');
-const { query } = require('../db');
+const { query, withTransaction } = require('../db');
 const { getArbolConRollups, resumenProyecto } = require('../services/rollups');
 const itemsTree = require('../services/itemsTree');
 const certificacionService = require('../services/certificacionService');
@@ -59,6 +59,40 @@ router.put('/:id', asyncHandler(async (req, res) => {
 
 router.patch('/:id/archivar', asyncHandler(async (req, res) => {
   await query('UPDATE proyecto SET activo = 0 WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { rows } = await query('SELECT * FROM proyecto WHERE id = $1', [id]);
+  if (!rows[0]) return res.status(404).json({ error: 'Proyecto no encontrado.' });
+
+  await withTransaction(async (client) => {
+    // 1. Detalles de certificación y certificaciones
+    await client.query(`
+      DELETE FROM certificacion_detalle
+      WHERE certificacion_id IN (SELECT id FROM certificacion WHERE proyecto_id = $1)
+    `, [id]);
+    await client.query('DELETE FROM certificacion WHERE proyecto_id = $1', [id]);
+
+    // 2. Efectos de actualización UOCRA y actualizaciones
+    await client.query(`
+      DELETE FROM actualizacion_uocra_efecto
+      WHERE actualizacion_id IN (SELECT id FROM actualizacion_uocra WHERE proyecto_id = $1)
+    `, [id]);
+    await client.query('DELETE FROM actualizacion_uocra WHERE proyecto_id = $1', [id]);
+
+    // 3. Gastos extras
+    await client.query('DELETE FROM extra WHERE proyecto_id = $1', [id]);
+
+    // 4. Ítems (desvincular parent_id para evitar conflictos autorreferenciales de foreign key)
+    await client.query('UPDATE item SET parent_id = NULL WHERE proyecto_id = $1', [id]);
+    await client.query('DELETE FROM item WHERE proyecto_id = $1', [id]);
+
+    // 5. El proyecto
+    await client.query('DELETE FROM proyecto WHERE id = $1', [id]);
+  });
+
   res.json({ ok: true });
 }));
 

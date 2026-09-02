@@ -5,6 +5,7 @@ import { fmtFecha, fmtMoney } from '../lib/format.js';
 import useCargar from '../hooks/useCargar.js';
 import useTitulo from '../hooks/useTitulo.js';
 import { Container, H1, Subtitle, Toolbar, TopBar } from '../components/Layout.jsx';
+import { confirmar, notificar } from '../components/Dialogos.jsx';
 import {
   Button, Card, Empty, ErrorAlert, Field, FieldRow, InputMonto, LoadingOverlay, Meter, Table, TBody, Td, Th, THead, Tr,
 } from '../components/ui/index.js';
@@ -92,7 +93,7 @@ function FormNuevoProyecto({ onCancelar, onCreado }) {
 export default function ProyectosPage() {
   useTitulo('Sistema de Obras');
   const navigate = useNavigate();
-  const { datos: proyectos, error, cargando } = useCargar(() => api.get('/proyectos'), []);
+  const { datos: proyectos, error, cargando, recargar } = useCargar(() => api.get('/proyectos'), []);
   const [formAbierto, setFormAbierto] = useState(false);
 
   const lista = proyectos || [];
@@ -131,6 +132,7 @@ export default function ProyectosPage() {
                 <Th num>Certificado</Th>
                 <Th num>Saldo pendiente</Th>
                 <Th className="w-40">Avance</Th>
+                <Th className="w-24 text-right">Acciones</Th>
               </tr>
             </THead>
             <TBody>
@@ -139,8 +141,8 @@ export default function ProyectosPage() {
                   key={p.id}
                   className="cursor-pointer"
                   onClick={(e) => {
-                    // El nombre ya es un link; en el resto de la fila navegamos igual.
-                    if (e.target.tagName !== 'A') navigate(`/proyecto/${p.id}`);
+                    // El nombre ya es un link; en el resto de la fila navegamos igual si no se clickea un botón.
+                    if (e.target.tagName !== 'A' && !e.target.closest('button')) navigate(`/proyecto/${p.id}`);
                   }}
                 >
                   <Td label="Obra">
@@ -163,6 +165,27 @@ export default function ProyectosPage() {
                   </Td>
                   <Td label="Avance">
                     <Meter pct={p.resumen.porcentaje_avance} className="max-sm:max-w-[180px] max-sm:flex-1" />
+                  </Td>
+                  <Td label="Acciones" className="text-right">
+                    <Button
+                      chico
+                      variante="danger"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const ok = await confirmar(
+                          `¿Eliminar el proyecto "${p.nombre}"?\nSe borrarán todos sus datos (ítems, certificaciones y actualizaciones). Esta acción no se puede deshacer.`
+                        );
+                        if (!ok) return;
+                        try {
+                          await api.del(`/proyectos/${p.id}`);
+                          recargar();
+                        } catch (err) {
+                          notificar('No se pudo eliminar el proyecto: ' + err.message);
+                        }
+                      }}
+                    >
+                      Eliminar
+                    </Button>
                   </Td>
                 </Tr>
               ))}
